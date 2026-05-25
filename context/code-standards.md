@@ -2,52 +2,85 @@
 
 ## General
 
-- [Principle — e.g. Keep modules small and single-purpose]
-- [Principle — e.g. Fix root causes, do not layer workarounds]
-- [Principle — e.g. Do not mix unrelated concerns in one
-  component or route]
+- Keep modules small and single-purpose. One responsibility per file.
+- Fix root causes, do not layer workarounds. If a data source is broken, fix the ingestion — do not paper over it in the UI.
+- Do not mix unrelated concerns in one component, route, or pipeline step.
+- Sources are first-class. Any function that produces a derived value should be able to name the source data that produced it.
 
-## TypeScript
+## TypeScript (frontend)
 
-- [Rule — e.g. Strict mode is required throughout the project]
-- [Rule — e.g. Avoid any — use explicit interfaces or narrowly
-  scoped types]
-- [Rule — e.g. Validate unknown external input at system
-  boundaries before trusting it]
+- Strict mode is required. `"strict": true` in `tsconfig.json` is non-negotiable.
+- No `any`. Use explicit interfaces, narrow union types, or `unknown` with a parsing step at the boundary.
+- Validate any data crossing the boundary from the backend with a typed parser (Zod) before trusting it. Score, tier, and recommendation payloads in particular.
+- Prefer functional components and hooks. No class components.
+- Co-locate component types with the component (`Foo.tsx` exports `Foo` and `FooProps`).
 
-## [Framework — e.g. Next.js]
+## React (frontend)
 
-- [Convention — e.g. Default to server components]
-- [Convention — e.g. Add use client only when browser
-  interactivity requires it]
-- [Convention — e.g. Keep route handlers focused on a
-  single responsibility]
+- Server components are not in scope (Vite SPA). All components are client components.
+- Lift data fetching to top-level routes or container components. Leaf components receive props.
+- Use `useMemo` for expensive derivations (top-N sort, scenario re-keying). Do not over-memoize trivial values.
+- Map interaction handlers (hover, click) must be debounced or throttled where they update React state on every mouse move.
+
+## Python (backend + pipeline)
+
+- Target Python 3.11+. Use `from __future__ import annotations` only where genuinely needed.
+- Type hints required on every function signature in `backend/`. In `pipeline/` notebooks they are encouraged but not enforced.
+- Use `pydantic` v2 for all request/response models in FastAPI.
+- Use `pandas` for tabular data and `geopandas` for anything spatial. Do not roll your own spatial join.
+- Use `httpx` for outbound HTTP (sync or async). Do not use `requests` in new code.
+- Standard formatter: `ruff format`. Standard linter: `ruff check`.
+
+## FastAPI Routes
+
+- Validate and parse request input with a pydantic model before any logic runs.
+- Return consistent response shapes. Every score or recommendation response carries the same wrapper: `{ data, sources, generated_at }`.
+- Keep route handlers thin. Business logic lives in service modules under `backend/services/`.
+- LLM-backed routes have an explicit timeout and a graceful fallback that still surfaces the underlying numbers.
+
+## ML / Model Code
+
+- Model training scripts live in `pipeline/training/`. They produce `.onnx` artifacts written to `backend/models/`.
+- Every model artifact ships with a sibling `<model>.json` metadata file recording: training data source, vintage, feature names, accuracy/R² on a held-out split, training timestamp.
+- Inference loads ONNX via `onnxruntime` in the backend. PyTorch is not a runtime dependency of the backend.
+- A model's predicted value, confidence interval, and feature attribution must all be retrievable per inference call.
+
+## Pipeline / Ingestion Code
+
+- One module per source. `pipeline/sources/<source_slug>.py` exposes a `fetch()` and a `normalize(raw) -> entities` function.
+- Every ingestion writes a manifest entry: source URL, fetch timestamp, row count, geometry validity check.
+- Spatial joins use `geopandas.sjoin` with a documented predicate (`intersects` or `within`). Never approximate with bounding boxes alone.
+- Tier A outputs are written to `frontend/public/data/` as GeoJSON. Tier B outputs are upserted into Postgres with a `source_slug` and `vintage` column.
 
 ## Styling
 
-- [Rule — e.g. Use CSS custom property tokens — no
-  hardcoded hex values]
-- [Rule — e.g. Follow the border radius scale defined
-  in ui-context.md]
+- Use Tailwind utility classes. No hardcoded hex values in JSX or CSS — reference CSS custom properties defined in `ui-context.md`.
+- Follow the border-radius scale in `ui-context.md`. Never write a raw `rounded-[5px]` outside the scale.
+- Dark theme only. No light-mode variants. The mission-control aesthetic is the brand.
 
-## API Routes
+## API Contracts
 
-- [Rule — e.g. Validate and parse request input before
-  any logic runs]
-- [Rule — e.g. Enforce auth and ownership before any mutation]
-- [Rule — e.g. Return consistent, predictable response shapes]
+- Every entity ID is a string slug, not an int. `"rexdale-kipling"`, not `42`.
+- Scores are floats in `[0, 1]`. Tiers are one of `"Critical" | "High" | "Medium" | "Low"`.
+- Timestamps are ISO 8601 with timezone. Never naive datetimes.
+- Source citations are arrays of `{ slug, label, vintage, url }`.
 
 ## Data and Storage
 
-- [Rule — e.g. Metadata belongs in the database]
-- [Rule — e.g. Large generated content belongs in file
-  or blob storage]
-- [Rule — e.g. Do not store large content directly in
-  the database]
+- Tier A: flat GeoJSON committed to repo. Generated by pipeline, never hand-edited.
+- Tier B: Postgres + PostGIS. Geometry columns use SRID 4326.
+- Tier C: in-memory only. Do not persist live data to disk.
+- Raw downloaded files live in `pipeline/data/raw/` and are gitignored.
 
 ## File Organization
 
-- `[folder]/` — [What belongs here]
-- `[folder]/` — [What belongs here]
-- `[folder]/` — [What belongs here]
-- `[folder]/` — [What belongs here]s
+- `frontend/src/components/` — React components, one per file, PascalCase.
+- `frontend/src/lib/` — pure TS utilities, parsers, formatters.
+- `frontend/src/hooks/` — custom hooks.
+- `frontend/public/data/` — Tier A GeoJSON, deployed with the app.
+- `backend/app/` — FastAPI app, routes under `routes/`, services under `services/`.
+- `backend/models/` — ONNX artifacts and their sibling metadata files.
+- `pipeline/sources/` — one module per ingestion source.
+- `pipeline/training/` — model training scripts and notebooks.
+- `pipeline/data/raw/` — gitignored raw fetched data.
+- `pipeline/notebooks/` — exploratory notebooks (EDA, model prototyping).
