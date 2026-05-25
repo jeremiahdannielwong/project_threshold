@@ -11,3 +11,4 @@ pyproj>=3.6
 fiona>=1.9
 jupyter>=1.0
 ipykernel>=6.0
+pyarrow
