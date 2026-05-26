@@ -6,27 +6,26 @@ Last updated: 2026-05-25. Hackathon deadline: **2026-05-26 23:59 ET.**
 
 ## Current Phase
 
-**Data pipeline complete and verified. EDA notebook is fully self-contained — no external scripts. All data is real (spot-checked against live sources). App build not yet started.**
+**Data pipeline migrated from notebook → Python module + Postgres. Backend reads ontology from `communities`/`facilities`/`pca_loadings` tables; no GeoJSON file fallback. Live-data archive (`weather_observations`, `flood_observations`, `threshold_scores`) is opt-in via `THRESHOLD_DATABASE_URL`. Full local stack runs via `docker compose up`. EDA notebook is retained as a demo / exploratory artifact only.**
 
 ---
 
 ## Completed
 
-### Data Pipeline (EDA Notebook — `pipeline/EDA.ipynb`)
+### Data Pipeline (Python module — `backend/app/pipeline/`)
 
-All data fetching, joining, scoring, and output runs top-to-bottom inside a single notebook. Deleting `pipeline/data/` and re-running regenerates everything from scratch.
+The pipeline is now a Python package — one module per upstream source plus an orchestrator. Run with `python -m app.pipeline` from `backend/`. Writes the ontology to Postgres; no file output. The cache dir `pipeline/data/` holds upstream zip/CSV downloads only.
 
-- ✅ **CT Boundaries** — 1,432 CTs (Brampton + Mississauga + Hamilton) from StatsCan 2021 boundary file. Cell: `a1-fetch-ct-boundaries`
-- ✅ **Brampton Census 2021** — 122 CTs, real data from Brampton ESRI ArcGIS FeatureServer (Layers 1/6/8/11): population, median_income, pct_renters, pct_pre1980, pct_low_income. Cell: `24bc1826`
-- ✅ **CISV + CISR** — StatsCan 2021 indices, DA→CT crosswalk aggregated to CT level. 1,432 CTs, ~0.5% null. Cell: `a3-fetch-cimd`
-- ✅ **Alectra Service Area** — 18 service area polygons, used to clip to 569 Alectra-territory CTs. Cell: `a8-fetch-alectra-area`
-- ✅ **Alectra Live Outages** — ArcGIS FeatureServer Layer 7 (Outage Area polygons), auto-detected. Cell: `c1-fetch-alectra-outages`
-- ✅ **Live Weather** — Open-Meteo current conditions per CT centroid (temperature, humidex, wind, precipitation). 684 CTs (569 + 115 added after Brampton refactor). Cell: `c2-fetch-envcan-weather`
-- ✅ **Brampton Facilities** — 38 recreation centres + 7 libraries from Brampton ESRI. Labelled as cooling/warming centres. Cell: `fetch-brampton-facilities`
-- ✅ **Neighbourhood Names** — 39 Secondary Plan Areas (Brampton planning districts), spatial-joined to CT centroids. 122/122 coverage. Cell: `fetch-neighbourhood-names`
-- ✅ **Spatial Joins** — All sources merged into `master_cts.geojson` (569 CTs, 32 columns). Cell: `spatial-joins-build-master`
-- ✅ **PCA Vulnerability Score** — PC1 across 10 factors, rescaled 0–100. Three scenarios (Baseline, Heatwave, Ice Storm). 566/569 CTs scored. Cell: `section4-pca-score`
-- ✅ **`brampton_full.geojson`** — 122 Brampton CTs, all data + scores + neighbourhoods + risk levels. Cell: `save-brampton-full`
+- ✅ **CT Boundaries** ([boundaries.py](../backend/app/pipeline/boundaries.py)) — StatsCan 2021 boundary file
+- ✅ **Brampton Census 2021** ([census.py](../backend/app/pipeline/census.py)) — 122 CTs, Brampton ESRI ArcGIS FeatureServer
+- ✅ **CISV + CISR** ([cimd.py](../backend/app/pipeline/cimd.py)) — StatsCan 2021 indices, DA→CT crosswalk
+- ✅ **Alectra Service Area** ([alectra.py](../backend/app/pipeline/alectra.py)) — 18 polygons, clips to served-by-Alectra CTs
+- ✅ **Facilities** ([facilities.py](../backend/app/pipeline/facilities.py)) — recreation centres + libraries from Brampton ESRI
+- ✅ **Neighbourhood Names** ([neighbourhoods.py](../backend/app/pipeline/neighbourhoods.py)) — Secondary Plan Areas spatial-joined to CT centroids
+- ✅ **PCA Vulnerability Score** ([scoring.py](../backend/app/pipeline/scoring.py)) — PC1 across 10 factors, three scenarios
+- ✅ **Postgres writer** ([db_writer.py](../backend/app/pipeline/db_writer.py)) — UPSERT into `communities`, `facilities`, `pca_loadings`
+
+The legacy notebook [pipeline/EDA.ipynb](../pipeline/EDA.ipynb) is retained as a demo / exploratory artifact but is no longer the build path.
 
 ### Data Verified Real (Spot-Checked 2026-05-25)
 
@@ -41,29 +40,50 @@ All data fetching, joining, scoring, and output runs top-to-bottom inside a sing
 
 ### Repo Structure
 
-- ✅ All pipeline scripts removed — `EDA.ipynb` is the single source of truth
-- ✅ `pipeline/data/` removed from git, in `.gitignore` — notebook regenerates all files
-- ✅ Setup cell creates all required subdirectories (`ct_boundaries/`, `cisv/`, `cisr/`, `geo_attr/`)
+- ✅ Pipeline moved out of the notebook into [backend/app/pipeline/](../backend/app/pipeline/) — one module per upstream source plus a `build.py` orchestrator
+- ✅ `pipeline/data/` is the gitignored upstream-source cache only — neither backend nor frontend reads from it
+- ✅ Postgres is the system of record for the ontology; backend boots by querying tables, never by reading files
 
-### Output Files (regenerated by notebook)
+### Backend Persistence (Postgres + SQLAlchemy async)
 
-| File | Description | CTs | Real/Synthetic |
-|------|-------------|-----|---------------|
-| `data/brampton_full.geojson` | **Primary app dataset** — 122 Brampton CTs, all fields + scores | 122 | Real |
-| `data/master_cts.geojson` | All 569 Alectra-territory CTs | 569 | Mixed (Brampton real, others partial) |
-| `data/brampton_facilities.geojson` | 45 cooling/warming centre locations | — | Real |
-| `data/real_cisr_cisv.csv` | StatsCan CISV+CISR for 1,432 Ontario CTs | 1,432 | Real |
-| `data/weather_ct.csv` | Current weather for 684 CTs | 684 | Real |
-| `data/loadings.csv` | PCA factor loadings for 3 scenarios | — | Computed |
-| `data/prototype_choropleth.png` | Static matplotlib map of 3 scenarios | — | — |
+Opt-in archival layer for live + computed values. App still boots without `THRESHOLD_DATABASE_URL` — helpers no-op when DB is disabled.
+
+- ✅ **SQLAlchemy 2.x async + asyncpg** added to `backend/requirements.txt`
+- ✅ **`backend/app/db.py`** — `Database` wrapper owns engine + sessionmaker; `connect()` runs `Base.metadata.create_all()` on startup
+- ✅ **`backend/app/models/db.py`** — two ORM tables:
+  - `weather_observations` (source, station_id, lat/lon, fetched_at, full measurement set, `raw_payload` JSONB) — for the OpenWeather Brampton-grid fetcher and the existing Open-Meteo path
+  - `threshold_scores` (ctuid, scenario_slug, computed_at, score, `factors`/`weights` JSONB) — historical scores so routes don't recompute PCA
+- ✅ **`backend/app/services/persistence.py`** — `PersistenceService` with `record_weather`, `record_weather_batch`, `record_score`, `latest_score`, `recent_weather`. Every method short-circuits when DB is off.
+- ✅ Wired into FastAPI lifespan ([backend/app/main.py](../backend/app/main.py)) and exposed via `get_db` / `get_persistence` in [backend/app/deps.py](../backend/app/deps.py)
+- ✅ All modules syntax-validate via `python -m py_compile`
+
+### Local Docker Stack
+
+- ✅ **`docker-compose.yml`** — `db` (postgres:16-alpine, healthcheck, named volume) + `backend` (built from Dockerfile, waits on `db.service_healthy`, bind-mounts `pipeline/data` read-only at `/data`)
+- ✅ **`backend/Dockerfile`** — Python 3.12-slim + GEOS/GDAL/PROJ system deps for geopandas, uvicorn on `0.0.0.0:8000`
+- ✅ **`.dockerignore`** — keeps `.env`, `.git`, `frontend/`, notebooks, caches out of build context
+- ✅ `docker compose config` validates clean
+
+### Postgres tables (written by `python -m app.pipeline` / live services)
+
+| Table | Family | Source | Description |
+|-------|--------|--------|-------------|
+| `communities` | Ontology | Pipeline | Scored CT polygon + factor attributes (replaces `brampton_full.geojson`) |
+| `facilities` | Ontology | Pipeline | Cooling / warming centres (replaces `brampton_facilities.geojson`) |
+| `pca_loadings` | Ontology | Pipeline | Per-scenario PCA loadings (replaces `loadings.csv`) |
+| `weather_observations` | Capture | Backend (live) | One row per weather fetch — OpenWeather, Open-Meteo, EnvCan |
+| `flood_observations` | Capture | Backend (live) | One row per Open-Meteo Flood (GloFAS v4) fetch |
+| `threshold_scores` | Capture | Backend (live) | Audit trail of CT × scenario × computation |
 
 ---
 
 ## Not Started
 
-- [ ] FastAPI backend (scoring endpoint, live data proxy)
+- [ ] FastAPI backend (scoring endpoint, live data proxy) — *scaffolding present (routes/services in `backend/app/`); endpoints need to be wired to real handlers*
+- [ ] OpenWeather Brampton-grid fetcher (writes to `weather_observations` via `PersistenceService`) — *waiting on API key activation*
 - [ ] React frontend (Mapbox choropleth, scenario switcher, detail panel)
 - [ ] Interactive Folium map cell in notebook (build_map.py was removed — code needs to be ported in)
+- [ ] Alembic migrations (deferred — `create_all` works for the hackathon)
 - [ ] Deployment (Vercel + Fly.io / Railway)
 
 ---
