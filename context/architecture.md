@@ -12,13 +12,17 @@
 | ML           | PyTorch + scikit-learn + ONNX       | Custom NN training, baseline models, portable inference             |
 | LLM (primary)| Gemini 2.x (long-context)           | Briefing synthesis, multi-source narrative                           |
 | LLM (critic) | DeepSeek R1 / V3                    | Chain-of-thought critique of ML outputs (stretch)                   |
-| Pipeline     | Python module `backend/app/pipeline/` (pandas, geopandas, httpx) | Ingest, normalize, spatial joins, PCA scoring, write ontology to Postgres |
+| Pipeline     | Python package `backend/app/pipeline/` — medallion layout (raw → staging → curated → ml → public) | Ingest, normalize, spatial joins, model training, scoring, publish to serving tables |
+| Orchestration| Prefect 3 (`backend/app/pipeline/flow.py`) | `@flow` + per-stage `@task` with retries; UI on :4200 |
+| ML tracking  | MLflow (sklearn pipelines + metrics + artifacts) | Experiment registry + model artifact store; UI on :5000 |
+| Migrations   | Alembic (`backend/alembic/`)        | Single migration history for schemas + tables; DSN reused from `Settings.database_url` |
+| Data contracts | Pandera (`backend/app/pipeline/schemas.py`) | DataFrame validation at stage boundaries — fails the stage before bad data is written |
 | Spatial API  | ArcGIS REST (sponsor-aligned)       | Primary ingestion mechanism for Alectra outages + Living Atlas      |
-| Storage (A)  | Postgres tables (`communities`, `facilities`, `pca_loadings`) | Structural ontology, written once by `python -m app.pipeline` |
+| Storage (A)  | Postgres — `raw / staging / curated / ml` schemas + `public.{communities, facilities, pca_loadings}` | Structural ontology + medallion layers, written by `python -m app.pipeline` |
 | Storage (B)  | PostgreSQL + PostGIS                | Seasonal cache, refreshed daily by cron (future)                     |
 | Storage (C)  | In-memory + short TTL cache + Postgres archive (`weather_observations`, future outage archive) | Live data + historical archive built by polling |
 | ORM          | SQLAlchemy 2.x async + asyncpg      | Async ORM over Postgres; opt-in via `THRESHOLD_DATABASE_URL`        |
-| Local stack  | Docker Compose (`docker-compose.yml`) | Postgres 16 + backend, single `docker compose up` for full local env |
+| Local stack  | Docker Compose (`docker-compose.yml`) | Postgres 16 + backend + Prefect server + MLflow tracking server, single `docker compose up` for full local env |
 | Frontend host| Vercel                              | Static frontend + edge functions if needed                          |
 | Backend host | Fly.io or Railway                   | FastAPI service with persistent volume for Postgres                 |
 
@@ -26,7 +30,7 @@
 
 - `frontend/` — React + TypeScript app. Owns the map, scenario switching, detail panel, recommendation panel, live overlay toggles, and all client-side rendering. Talks to the backend over HTTP. Never computes scores itself — it consumes them.
 - `backend/` — FastAPI service. Owns ML inference, LLM orchestration, recommendation composition, the Tier C live endpoints, and the polling archive of the Alectra outage feed. Reads the ontology from Postgres at startup into an in-memory `DataStore`. Also hosts the Tier A pipeline module (`backend/app/pipeline/`) so ingestion and serving share one venv + one set of ORM models.
-- `backend/app/pipeline/` — Python package (orchestrator: `build.py`). Owns all ingestion, normalization, spatial joins, PCA scoring, and writing the ontology to the `communities` / `facilities` / `pca_loadings` Postgres tables. Run via `python -m app.pipeline`. Uses `pipeline/data/` only as a local cache for upstream zip / CSV downloads — never as an output target.
+- `backend/app/pipeline/` — Python package. Owns all ingestion, normalization, spatial joins, model training, scoring, and publication to the `public.communities` / `public.facilities` / `public.pca_loadings` serving tables. Structured as a medallion pipeline: `sources/` (upstream loaders), `stages/` (six chained stages: ingest → clean → features → train → score → publish), `flow.py` (Prefect orchestration), `config.py` (scenarios + factor columns), `schemas.py` (Pandera contracts). Run via `python -m app.pipeline` (full chain) or `python -m app.pipeline --stage <name>` (one stage). Full design in [pipeline.md](./pipeline.md). Uses `pipeline/data/` only as a local cache for upstream zip / CSV downloads — never as an output target.
 - `pipeline/` (top level) — Holds `EDA.ipynb` (kept as a demo / exploratory notebook, no longer the build path) and the gitignored `pipeline/data/` cache dir.
 - `context/` — Specification documents. Source of truth for what the system should be.
 - `docs/` — Reference materials (hackathon docs, challenge sets, external references).
@@ -35,7 +39,7 @@
 
 | Tier | Refresh   | Source examples                                                                                  | Storage                                                                           |
 | ---- | --------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| A    | Yearly    | StatsCan 2021 Census Tracts + demographics + CISV/CISR, Brampton ESRI census, facilities         | Postgres tables: `communities`, `facilities`, `pca_loadings`                      |
+| A    | Yearly    | StatsCan 2021 Census Tracts + demographics + CISV/CISR, Brampton ESRI census, facilities         | Postgres medallion: `raw.*` (audit) → `staging.*` (typed) → `curated.community_features` (joined) → `ml.{models, community_scores}` (versioned PCA) → `public.{communities, facilities, pca_loadings}` (serving)                      |
 | B    | Daily     | Cooling centres (Miss./Bramp./Hamilton), Esri Living Atlas EJ, Esri Climate Hub heat vuln        | PostgreSQL + PostGIS (future)                                                     |
 | C    | 5–15 min  | Alectra outages (ArcGIS REST), Open-Meteo / OpenWeather / EnvCan weather, advisories, AQHI       | In-memory TTL cache (hot serve) + `weather_observations` Postgres archive         |
 
@@ -56,7 +60,7 @@ All sources normalize to a small set of spatial entities, keyed by stable IDs. E
 
 **Postgres is the system of record.** The ontology and the live archive both live there; the backend never reads ontology files at runtime.
 
-- **Tier A (Postgres ontology tables)**: `communities` (scored CT polygons + properties JSON), `facilities` (cooling/warming centres), `pca_loadings` (per-scenario PCA loadings). Written once by `python -m app.pipeline`, read at backend startup into the in-memory `DataStore`. Definitions in [backend/app/models/db.py](../backend/app/models/db.py).
+- **Tier A (Postgres medallion)**: The pipeline writes through five schemas — `raw.*` holds verbatim upstream payloads (audit), `staging.*` holds typed/cleaned rows, `curated.community_features` is the joined feature table the model and serving tier both read, `ml.{models, community_scores}` holds versioned PCA artifacts + per-CT scores with `model_id` provenance, and `public.{communities, facilities, pca_loadings}` are the serving tables the FastAPI app loads at startup. The `publish` stage promotes `ml.* + staging.facilities + curated.community_features` into `public.*` in a single transaction so readers never see a half-rewritten ontology. Full design in [pipeline.md](./pipeline.md); migrations in [backend/alembic/versions/](../backend/alembic/versions/); ORM definitions in [backend/app/models/db.py](../backend/app/models/db.py).
 - **Tier B (Postgres, future)**: Daily-refreshed entity tables (Shelters, PollutionSources, Living Atlas EJ snapshots). Spatial indices on geometry, SRID 4326 — added once PostGIS is enabled.
 - **Tier C live cache (in-memory)**: FastAPI process holds short-TTL responses for weather, advisories, AQHI. Refresh on miss.
 - **Tier C archive (Postgres)**: `weather_observations` — one row per fetch from any weather source. `threshold_scores` — audit trail of CT × scenario × computation. Written via `PersistenceService` ([backend/app/services/persistence.py](../backend/app/services/persistence.py)).
@@ -68,19 +72,28 @@ All sources normalize to a small set of spatial entities, keyed by stable IDs. E
 Engine + sessionmaker live in [backend/app/db.py](../backend/app/db.py); ORM models in [backend/app/models/db.py](../backend/app/models/db.py); write helpers in [backend/app/services/persistence.py](../backend/app/services/persistence.py); read helper in [backend/app/services/data_loader.py](../backend/app/services/data_loader.py).
 
 The FastAPI lifespan runs the boot sequence in order:
-1. `Database(settings)` + `await db.connect()` — creates the async engine, runs `Base.metadata.create_all()` (no Alembic yet — added when migrations actually become a concern).
+1. `Database(settings)` + `await db.connect()` — creates the async engine, runs `Base.metadata.create_all()` for the `public.*` ORM tables (Alembic owns the `raw / staging / curated / ml` schemas; the two systems coexist because `create_all` is idempotent and never touches the medallion layers).
 2. `PersistenceService(db)` — registered for routes that want to archive observations / scores.
-3. `await load_data_store(db)` — queries `communities`, `facilities`, `pca_loadings` and assembles the in-memory `DataStore` that every read route hits.
+3. `await load_data_store(db)` — queries `public.communities`, `public.facilities`, `public.pca_loadings` and assembles the in-memory `DataStore` that every read route hits.
 
 The DB layer is **opt-in for tests and degraded boot**: `THRESHOLD_DATABASE_URL` unset → `db.enabled = False`, `load_data_store` returns an empty store with a warning, and `PersistenceService` methods no-op. The backend still boots and live endpoints (weather, outages) keep working. The pipeline (`python -m app.pipeline`) **requires** the DSN and raises if it's missing.
 
-### Ontology + capture tables
+**Migrations:** Alembic is the source of truth for the medallion schemas. `alembic upgrade head` from `backend/` applies [0001_pipeline_layers.py](../backend/alembic/versions/0001_pipeline_layers.py) which creates the four schemas plus all 13 raw/staging/curated/ml tables. New schema changes go through Alembic; `create_all` continues to handle the `public.*` tables on startup.
 
-| Family | Table | Purpose | Key columns |
-|--------|-------|---------|-------------|
-| Ontology | `communities` | Scored CT polygon + factor attributes. Replaces `brampton_full.geojson`. | `ctuid` (pk), `properties` JSON, `geometry` JSON, `built_at` |
-| Ontology | `facilities` | Cooling/warming centres. Replaces `brampton_facilities.geojson`. | `id` (pk), `properties` JSON, `geometry` JSON, `built_at` |
-| Ontology | `pca_loadings` | Per-scenario factor loadings. Replaces `loadings.csv`. | `factor` (pk), `loading_baseline`, `loading_heatwave`, `loading_icestorm`, `source_slug` |
+### Medallion + capture tables
+
+The pipeline writes through five schemas; the backend reads only from `public.*`. See [pipeline.md](./pipeline.md) for the full table inventory.
+
+| Schema | Table | Purpose |
+|---|---|---|
+| raw | `census_2021`, `cisv_cisr_2021`, `ct_boundaries`, `alectra_service_area`, `facilities`, `neighbourhoods` | One row per fetch — payload stored verbatim as JSONB, with `source_slug`, `source_url`, `load_at`. Immutable audit trail. |
+| staging | `census_tracts`, `vulnerability`, `ct_geometries`, `facilities` | Typed columns per logical entity, deduped, replayable from `raw.*`. Pandera-validated before write. |
+| curated | `community_features` | One row per Brampton CT — full join across staging tables, clipped to Alectra service area. Input to model + publish. |
+| ml | `models` | One row per trained model — `model_id` PK, scenario, version, pickled sklearn `Pipeline`, loadings, metrics, `mlflow_run_id`. |
+| ml | `community_scores` | One row per CT × scenario — `score`, `grade`, `model_id` FK. Every score on the frontend traces back through here. |
+| public | `communities` | Serving table the FastAPI app loads at startup. `ctuid` (pk), `properties` JSON, `geometry` JSON, `built_at`. |
+| public | `facilities` | Cooling/warming centres. `id` (pk), `properties` JSON, `geometry` JSON, `built_at`. |
+| public | `pca_loadings` | Per-scenario factor loadings for the radar chart. `factor` (pk), `loading_baseline`, `loading_heatwave`, `loading_icestorm`, `source_slug`. |
 | Capture  | `weather_observations` | One row per fetch from any weather source (OpenWeather, Open-Meteo, EnvCan). Builds the historical-weather dataset Open-Meteo rate-limited us out of. | `source`, `station_id`, `ctuid`, `latitude`, `longitude`, `fetched_at`, `observed_at`, full measurement set, `raw_payload` JSONB |
 | Capture  | `flood_observations` | One row per CT × Open-Meteo Flood (GloFAS v4) fetch. Discharge today, 30-day mean, 7-day max, anomaly ratio. | `ctuid`, `latitude`, `longitude`, `fetched_at`, `river_discharge`, `discharge_30d_mean`, `discharge_7d_max`, `discharge_anomaly`, `raw_payload` JSONB |
 | Capture  | `threshold_scores` | One row per CT × scenario × computation — audit trail; not used as the read path. | `ctuid`, `scenario_slug`, `computed_at`, `score`, `factors` JSONB, `weights` JSONB |
@@ -93,10 +106,15 @@ PostGIS extension is not enabled today — geometry is stored as GeoJSON dicts i
 
 - `db` — `postgres:16-alpine` with healthcheck, named volume `threshold_pgdata` so data persists across `docker compose down`.
 - `backend` — built from [backend/Dockerfile](../backend/Dockerfile) (Python 3.12-slim + GEOS/GDAL/PROJ for geopandas). `depends_on: db.service_healthy` blocks startup until Postgres is reachable.
+- `prefect` — `prefecthq/prefect:3-latest` running `prefect server start`. Holds the flow run history + UI on `:4200`. SQLite metadata in the `threshold_prefect` volume.
+- `mlflow` — `ghcr.io/mlflow/mlflow:latest` running the tracking server on `:5000` with SQLite backend store + filesystem artifact store, both in the `threshold_mlflow` volume.
 
-The backend container does not bind-mount `pipeline/data` — the ontology comes from Postgres, not from files. To populate Postgres run the pipeline either on the host (`cd backend && python -m app.pipeline` with `THRESHOLD_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/threshold`) or inside the container (`docker compose exec backend python -m app.pipeline`); either way the upstream zip/CSV cache stays at the operator's `pipeline/data/`.
+The backend container does not bind-mount `pipeline/data` — the ontology comes from Postgres, not from files. To populate Postgres:
 
-Env-var passthrough: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT`, `BACKEND_PORT`, `OPENWEATHER_API_KEY`, `GEMINI_API_KEY`. All have sensible defaults; only secrets need to be supplied.
+1. Run migrations once: `cd backend && alembic upgrade head` (creates the `raw / staging / curated / ml` schemas).
+2. Run the pipeline either on the host (`cd backend && python -m app.pipeline` with `THRESHOLD_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/threshold`) or inside the container (`docker compose exec backend python -m app.pipeline`); either way the upstream zip/CSV cache stays at the operator's `pipeline/data/`.
+
+Env-var passthrough: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT`, `BACKEND_PORT`, `PREFECT_PORT`, `MLFLOW_PORT`, `OPENWEATHER_API_KEY`, `GEMINI_API_KEY`. All have sensible defaults; only secrets need to be supplied. The backend container also receives `THRESHOLD_MLFLOW_TRACKING_URI=http://mlflow:5000` and `THRESHOLD_PREFECT_API_URL=http://prefect:4200/api` so the pipeline can reach both services from inside the network.
 
 ## Auth and Access Model
 
