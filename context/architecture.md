@@ -6,7 +6,7 @@
 | ------------ | ----------------------------------- | -------------------------------------------------------------------- |
 | Frontend     | React 18 + TypeScript + Vite        | Map UI, scenario controls, detail and recommendation panels         |
 | UI styling   | Tailwind CSS + shadcn/ui            | Dark mission-control design system, component primitives            |
-| Map          | Mapbox GL JS                        | Choropleth, overlays, hover/click interactions                       |
+| Map          | react-leaflet 4 + Leaflet 1.9 (Carto dark basemap) | Choropleth, shelter/outage overlays, click/hover interactions. Mapbox GL JS is a planned future upgrade for vector-tile rendering. |
 | Charts       | Recharts                            | Radar chart, factor bars in detail panel                             |
 | Backend      | FastAPI (Python 3.11+)              | API surface, ML inference, LLM orchestration, Tier C live endpoints |
 | ML           | PyTorch + scikit-learn + ONNX       | Custom NN training, baseline models, portable inference             |
@@ -34,6 +34,39 @@
 - `pipeline/` (top level) — Holds `EDA.ipynb` (kept as a demo / exploratory notebook, no longer the build path) and the gitignored `pipeline/data/` cache dir.
 - `context/` — Specification documents. Source of truth for what the system should be.
 - `docs/` — Reference materials (hackathon docs, challenge sets, external references).
+
+## Frontend Component Architecture
+
+All frontend files live under `frontend/src/`. The app is bootstrapped with Vite and uses React 18 + TypeScript + Tailwind CSS. Proxied in dev via Vite to the FastAPI backend at `http://localhost:8000`.
+
+### State management
+
+`context.tsx` — `AppProvider` wraps the entire tree and exposes shared state via React context:
+- `tracts` — array of loaded `Tract` objects (GeoJSON features + scores)
+- `facilities` — array of `Facility` objects (shelters/libraries/rec centres)
+- `selected` — the currently active Census Tract (nullable)
+- `scenario` — one of `baseline | heatwave | icestorm`; drives score display everywhere
+- `view` — `map | triage`; controls which primary panel renders
+
+### Data layer
+
+- `types.ts` — `Tract`, `Facility`, `Scenario`, `Tier`, `View` TypeScript interfaces. Single contract across the whole frontend.
+- `utils.ts` — `scoreFor(tract, scenario)`, `getTier(score)`, `TIER_COLORS`, `TIER_LABELS`, `formatIncome`, `formatPct`, `weatherLabel`, `haversineKm`. All display and scoring helpers are pure functions here.
+- `dataLoader.ts` — calls `/api/communities/features` and `/api/facilities`, transforms GeoJSON into typed arrays, populates context on mount.
+
+### Components
+
+| Component | Role |
+|---|---|
+| `TopBar.tsx` | Logo, view switcher (Map/Triage), scenario switcher (Baseline/Heatwave/Ice Storm) |
+| `LeftPanel.tsx` | Ranked CT list sorted by current scenario score, with outage pulse dots |
+| `MapPanel.tsx` | Leaflet choropleth on Carto dark basemap; CT polygon tier fill, shelter markers, outage overlay, tier legend |
+| `RightPanel.tsx` | Detail panel: score header, live weather, CISV dimension bars, vulnerability breakdown, income, shelters list, LLM briefing button |
+| `TriageView.tsx` | Sortable stats table showing Critical count, avg score, no-shelter count, and active outages per CT |
+
+The frontend **never computes scores**. All scoring, ML inference, and recommendation composition happen in the backend; the frontend consumes precomputed values from the API.
+
+---
 
 ## Data Architecture: Three-Tier Fusion
 

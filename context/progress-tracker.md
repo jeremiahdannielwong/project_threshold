@@ -102,10 +102,28 @@ Opt-in archival layer for live + computed values. App still boots without `THRES
 
 ---
 
+### React Frontend (React 18 + TypeScript + Vite + Tailwind + react-leaflet)
+
+All UI files live under `frontend/src/`. The Docker Compose file now includes a 2-stage Dockerfile (builder/runtime) to handle geospatial dependencies on the frontend build.
+
+**Core modules:**
+- ✅ **`types.ts`** — TypeScript type definitions: `Tract`, `Facility`, `Scenario`, `Tier`, `View`. Single source of truth for data shapes across the whole frontend.
+- ✅ **`utils.ts`** — Pure utility functions: `scoreFor`, `getTier`, `TIER_COLORS`, `TIER_LABELS`, `formatIncome`, `formatPct`, `weatherLabel`, `haversineKm`. No side effects; all score and display logic lives here.
+- ✅ **`dataLoader.ts`** — Fetches `/api/communities/features` and `/api/facilities` from the backend, proxied via Vite dev server to `http://localhost:8000`. Handles GeoJSON → typed array transformation.
+- ✅ **`context.tsx`** — `AppProvider` wraps the app with shared React context. Holds `tracts`, `facilities`, `selected` (active CT), `scenario` (Baseline/Heatwave/Ice Storm), and `view` (Map/Triage) state. All child components read from here.
+
+**Components:**
+- ✅ **`components/TopBar.tsx`** — Logo, view switcher (Map ↔ Triage toggle), and scenario switcher (Baseline / Heatwave / Ice Storm). Dispatches context updates on interaction.
+- ✅ **`components/LeftPanel.tsx`** — Ranked Census Tract list sorted by current scenario score, highest-vulnerability first. Includes outage pulse dots as live indicators. Clicking a row sets `selected`.
+- ✅ **`components/MapPanel.tsx`** — Leaflet choropleth rendered via react-leaflet with a Carto dark basemap. Renders CT polygons colour-coded by tier, shelter marker overlays, and outage overlays. Includes a tier legend. Click selects a CT and populates RightPanel.
+- ✅ **`components/RightPanel.tsx`** — Detail panel for the selected CT. Shows score header, live weather conditions, vulnerability breakdown, CISV dimension bars, income section, nearby shelter list, and an LLM briefing button that calls the backend `/api/briefing` endpoint.
+- ✅ **`components/TriageView.tsx`** — Table view (alternative to map) showing per-CT stats: Critical count, average score, no-shelter count, and active outages. Columns are sortable.
+
+---
+
 ## Not Started
 
 - [ ] OpenWeather Brampton-grid fetcher (writes to `weather_observations` via `PersistenceService`) — *waiting on API key activation*
-- [ ] React frontend (Mapbox choropleth, scenario switcher, detail panel)
 - [ ] Deployment (Vercel + Fly.io / Railway)
 - [ ] Wire flood signal into the PCA composite (currently served as a standalone overlay; not yet a scored factor)
 - [ ] Demographic-aware Gemini personalization (uses `curated.community_features` directly instead of the rebuilt `public.communities` row to keep prompts compact)
@@ -143,8 +161,8 @@ Opt-in archival layer for live + computed values. App still boots without `THRES
 ## Submission Checklist
 
 - [ ] Public URL live (deploy frontend + backend)
-- [ ] React frontend with Mapbox choropleth
-- [ ] All 3 scenarios working in UI (Baseline / Heatwave / Ice Storm)
+- [x] React frontend with choropleth (react-leaflet 4 + Leaflet 1.9, Carto dark basemap — not Mapbox; Mapbox is a future upgrade) ✅
+- [x] All 3 scenarios working in UI (Baseline / Heatwave / Ice Storm) ✅
 - [ ] Demo video / slides updated
 - [x] FastAPI backend running (routes: communities, weather, outages, flood, facilities, briefing, recommendations, extreme-plan, scenarios, health) ✅
 - [x] Pipeline module persists ontology to Postgres ✅
