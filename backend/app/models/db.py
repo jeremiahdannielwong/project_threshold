@@ -29,7 +29,7 @@ from ..db import Base
 
 
 class Community(Base):
-    """Scored Census Tract. Replaces ``brampton_full.geojson``."""
+    """Scored Census Tract — polygon + factor attributes + composite scores."""
 
     __tablename__ = "communities"
 
@@ -46,7 +46,7 @@ class Community(Base):
 
 
 class Facility(Base):
-    """Cooling / warming centre. Replaces ``brampton_facilities.geojson``."""
+    """Cooling / warming centre (recreation centre or library)."""
 
     __tablename__ = "facilities"
 
@@ -59,7 +59,7 @@ class Facility(Base):
 
 
 class PcaLoading(Base):
-    """PCA factor loading per scenario. Replaces ``loadings.csv``."""
+    """PCA factor loading per scenario (one row per factor)."""
 
     __tablename__ = "pca_loadings"
 

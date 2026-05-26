@@ -8,7 +8,7 @@ import geopandas as gpd
 import pandas as pd
 
 from ._http import get_text
-from .sources import BRAMPTON_LIB_URL, BRAMPTON_REC_URL
+from .urls import BRAMPTON_LIB_URL, BRAMPTON_REC_URL
 
 logger = logging.getLogger(__name__)
 

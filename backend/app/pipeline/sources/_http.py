@@ -8,7 +8,7 @@ from pathlib import Path
 
 import httpx
 
-from .sources import HTTP_TIMEOUT_SECONDS, HTTP_USER_AGENT
+from .urls import HTTP_TIMEOUT_SECONDS, HTTP_USER_AGENT
 
 
 def _client() -> httpx.Client:
@@ -29,6 +29,14 @@ def download_to(url: str, dest: Path) -> Path:
         r.raise_for_status()
     dest.write_bytes(r.content)
     return dest
+
+
+def download_bytes(url: str) -> bytes:
+    """Download ``url`` and return the raw bytes (no caching)."""
+    with _client() as client:
+        r = client.get(url)
+        r.raise_for_status()
+    return r.content
 
 
 def download_and_extract_zip(url: str, extract_dir: Path) -> Path:

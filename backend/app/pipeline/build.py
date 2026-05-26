@@ -1,188 +1,120 @@
-"""Orchestrator for the Tier A build.
+"""Pipeline orchestrator -- chains the six stages.
 
-Reads every upstream source, spatially joins them, fits the PCA composite, and
-persists the result into Postgres:
+The stages are decoupled: each reads from one schema and writes to the next.
+Running the full chain produces the same observable end state as the previous
+monolithic ``build_all`` did, but every intermediate result is persisted and
+inspectable in Postgres.
 
-  - ``communities``   table  ← scored CT polygons + attributes
-  - ``facilities``    table  ← cooling/warming centres
-  - ``pca_loadings``  table  ← per-scenario PCA loadings
+Stage order:
 
-Run from the backend directory with::
-
-    python -m app.pipeline                                  # uses .env
-    THRESHOLD_DATABASE_URL=postgresql+asyncpg://... \\
-        python -m app.pipeline
-
-There is no file output. The DB is the system of record; the backend reads
-from it at startup.
+  1. ingest    upstream APIs        -> raw.*
+  2. clean     raw.*                -> staging.*
+  3. features  staging.*            -> curated.community_features
+  4. train     curated.*            -> ml.models   (also -> MLflow)
+  5. score     ml.models + curated  -> ml.community_scores
+  6. publish   ml.* + staging.*     -> public.{communities, facilities, pca_loadings}
 """
 
 from __future__ import annotations
 
-import argparse
-import asyncio
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
-import geopandas as gpd
-import numpy as np
+from .stages import StageResult
+from .stages import clean as clean_stage
+from .stages import features as features_stage
+from .stages import ingest as ingest_stage
+from .stages import publish as publish_stage
+from .stages import score as score_stage
+from .stages import train as train_stage
 
-from .alectra import load_alectra_service_area
-from .boundaries import load_ct_boundaries
-from .census import load_brampton_census
-from .cimd import load_cimd
-from .facilities import build_facilities
-from .neighbourhoods import neighbourhood_map
-from .scoring import risk_level, score_communities
+logger = logging.getLogger(__name__)
 
-logger = logging.getLogger("threshold.pipeline")
 
-# Tier C columns are placeholders only — read endpoints hydrate them live.
-TIER_C_PLACEHOLDERS: dict[str, object] = {
-    "temperature_c": np.nan,
-    "humidex": np.nan,
-    "precipitation_mm": np.nan,
-    "wind_speed_kmh": np.nan,
-    "wind_gusts_kmh": np.nan,
-    "weather_code": np.nan,
-    "active_outages": 0,
-    "customers_affected": 0,
+STAGES: dict[str, Any] = {
+    "ingest": ingest_stage,
+    "clean": clean_stage,
+    "features": features_stage,
+    "train": train_stage,
+    "score": score_stage,
+    "publish": publish_stage,
 }
 
 
 @dataclass
-class BuildResult:
-    n_communities: int
-    n_facilities: int
-    n_loadings: int
+class PipelineResult:
+    results: list[StageResult]
+
+    @property
+    def total_rows(self) -> int:
+        return sum(r.rows_written for r in self.results)
+
+    @property
+    def total_seconds(self) -> float:
+        return sum(r.elapsed_seconds for r in self.results)
 
 
-async def build_all(cache_dir: Path) -> BuildResult:
-    """Run the full Tier A pipeline end-to-end and persist into Postgres.
-
-    ``cache_dir`` holds the upstream zip/CSV cache so successive runs are fast.
-    It is NOT a publication target — the only consumer of the cache is the
-    pipeline itself.
-    """
+def _open_db() -> Any:
     from ..config import get_settings
     from ..db import Database
-    from .db_writer import write_ontology
 
     settings = get_settings()
     db = Database(settings)
     if not db.enabled:
         raise RuntimeError(
             "Pipeline requires THRESHOLD_DATABASE_URL. Set it (e.g. in backend/.env) "
-            "to a postgresql+asyncpg://… DSN and re-run."
+            "to a postgresql+asyncpg://... DSN and re-run."
         )
+    return db
 
-    cache_dir.mkdir(parents=True, exist_ok=True)
 
-    logger.info("=== A1 · CT boundaries ===")
-    gdf_ct = load_ct_boundaries(cache_dir)
+async def run_stage(stage_name: str, *, cache_dir: Path | None = None) -> StageResult:
+    """Run one stage. Used by the CLI's ``--stage`` flag and tests."""
+    module = STAGES.get(stage_name)
+    if module is None:
+        raise ValueError(f"Unknown stage {stage_name!r}; expected one of {list(STAGES)}")
 
-    logger.info("=== A2 · Brampton census ===")
-    df_census = load_brampton_census()
-
-    logger.info("=== A3 + A4 · CISV / CISR ===")
-    df_cimd = load_cimd(cache_dir)
-
-    logger.info("=== Alectra service area ===")
-    gdf_alectra = load_alectra_service_area()
-
-    logger.info("=== Facilities ===")
-    gdf_facilities = build_facilities()
-
-    logger.info("=== Joins ===")
-    master = gdf_ct.merge(df_census, on="CTUID", how="left").merge(
-        df_cimd, on="CTUID", how="left"
-    )
-
-    # served_by_alectra: CT centroid within Alectra footprint union
-    centroids = master.copy()
-    centroids.geometry = centroids.geometry.centroid
-    alectra_union = gdf_alectra.geometry.union_all()
-    master["served_by_alectra"] = centroids.geometry.within(alectra_union)
-    master = master[master["served_by_alectra"]].reset_index(drop=True)
-    logger.info("After Alectra clip: %d CTs", len(master))
-
-    # Tier C placeholder columns — backend hydrates these live.
-    for col, default in TIER_C_PLACEHOLDERS.items():
-        master[col] = default
-
-    logger.info("=== PCA ===")
-    scored, loadings = score_communities(master)
-
-    logger.info("=== Brampton filter + neighbourhood map ===")
-    brampton_ctuids = set(df_census["CTUID"].astype(str))
-    gdf_brampton = scored[scored["CTUID"].astype(str).isin(brampton_ctuids)].copy()
-    nbhd = neighbourhood_map(gdf_ct)
-    gdf_brampton["neighbourhood"] = gdf_brampton["CTUID"].map(nbhd).fillna("Brampton")
-    gdf_brampton["threshold_score"] = gdf_brampton["threshold_score_baseline"]
-    gdf_brampton["risk_level"] = gdf_brampton["threshold_score_baseline"].apply(risk_level)
-
-    gdf_brampton = gpd.GeoDataFrame(gdf_brampton, geometry="geometry", crs=gdf_ct.crs)
-
-    logger.info("=== Persisting to Postgres ===")
+    db = _open_db()
     await db.connect()
     try:
-        counts = await write_ontology(
-            db,
-            communities=gdf_brampton,
-            facilities=gdf_facilities,
-            loadings=loadings,
-        )
+        if stage_name == "ingest":
+            if cache_dir is None:
+                raise ValueError("ingest stage requires cache_dir")
+            return await module.run(db, cache_dir=cache_dir)
+        return await module.run(db)
     finally:
         await db.dispose()
 
-    return BuildResult(
-        n_communities=counts["communities"],
-        n_facilities=counts["facilities"],
-        n_loadings=counts["pca_loadings"],
-    )
 
+async def run_all(cache_dir: Path) -> PipelineResult:
+    """Run every stage end-to-end and persist into Postgres."""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    db = _open_db()
+    await db.connect()
+    results: list[StageResult] = []
+    try:
+        logger.info("=== ingest ===")
+        results.append(await ingest_stage.run(db, cache_dir=cache_dir))
+        logger.info("=== clean ===")
+        results.append(await clean_stage.run(db))
+        logger.info("=== features ===")
+        results.append(await features_stage.run(db))
+        logger.info("=== train ===")
+        results.append(await train_stage.run(db))
+        logger.info("=== score ===")
+        results.append(await score_stage.run(db))
+        logger.info("=== publish ===")
+        results.append(await publish_stage.run(db))
+    finally:
+        await db.dispose()
 
-def _parse_args() -> argparse.Namespace:
-    from ..config import get_settings  # deferred — backend deps not needed for import
-
-    settings = get_settings()
-    p = argparse.ArgumentParser(
-        prog="python -m app.pipeline",
-        description="Build Tier A artifacts and write them to Postgres.",
-    )
-    p.add_argument(
-        "--cache-dir",
-        type=Path,
-        default=settings.data_dir,
-        help=(
-            "Local directory for upstream zip / CSV cache "
-            f"(default: {settings.data_dir}). Not an output."
-        ),
-    )
-    p.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Log DEBUG-level pipeline messages.",
-    )
-    return p.parse_args()
-
-
-def main() -> None:
-    args = _parse_args()
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s — %(message)s",
-    )
-    result = asyncio.run(build_all(args.cache_dir))
+    summary = PipelineResult(results=results)
     logger.info(
-        "Done — wrote %d communities, %d facilities, %d loadings to Postgres.",
-        result.n_communities,
-        result.n_facilities,
-        result.n_loadings,
+        "pipeline done: %d rows across %d stages in %.2fs",
+        summary.total_rows,
+        len(summary.results),
+        summary.total_seconds,
     )
-
-
-if __name__ == "__main__":
-    main()
+    return summary

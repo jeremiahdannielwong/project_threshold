@@ -2,7 +2,7 @@
 
 ## Overview
 
-Threshold is a civic data fusion platform for community energy vulnerability. It ingests structural, seasonal, and real-time data — currently siloed across Alectra Utilities, the City of Mississauga, the City of Brampton, the City of Hamilton, Esri Canada, Statistics Canada, NRCan, and Environment Canada — normalizes them into a shared spatial ontology, and produces traceable, quantitative recommendations that emergency managers, utility planners, and community organizations can act on together.
+Threshold is a civic data fusion platform for community energy vulnerability. It ingests structural, seasonal, and real-time data — currently siloed across Alectra Utilities, the City of Brampton, Esri Canada, Statistics Canada, Open-Meteo (weather + Copernicus GloFAS flood), and Environment Canada — normalizes them into a shared spatial ontology, and produces traceable, quantitative recommendations that emergency managers, utility planners, and community organizations can act on together.
 
 The product surface is a dark, mission-control choropleth of communities (census tracts) across the Alectra service territory. The fusion layer, ML models, and LLM reasoning stack sit underneath. Built for **Seneca Energy Hackathon 2026, Theme 3 (Community Energy, Equity & Sustainability)**, addressing all three problem statements in Challenge Set 03.
 
@@ -64,7 +64,7 @@ This sentence threads both sponsors and identifies a real gap. It belongs in the
 - Scenario controls (Baseline, Heatwave, Ice Storm).
 - Detail panel with radar chart, factor bars, source citations, LLM briefing.
 - Recommendation panel with per-card anatomy: action, why (numbers), how we know (sources), who should act.
-- Live overlays: Alectra outages, cooling centres, weather advisories, air quality.
+- Live overlays: Alectra outages, cooling centres, weather, GloFAS river-discharge anomaly, weather advisories, air quality.
 
 ## Scope
 
@@ -77,7 +77,7 @@ This sentence threads both sponsors and identifies a real gap. It belongs in the
 - One trained ML model with documented validation.
 - LLM-generated briefings for clicked communities.
 - Recommendation cards with traceable numbers.
-- Live weather overlay (Environment Canada GeoMet).
+- Live weather overlay (Open-Meteo) and live flood/river-discharge overlay (Open-Meteo Flood / GloFAS).
 - Deployed at a public URL, working on mobile.
 
 ### Stretch (ship if time allows)

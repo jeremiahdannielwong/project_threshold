@@ -1,22 +1,26 @@
 """Tier A data pipeline.
 
 Replaces the ``pipeline/EDA.ipynb`` notebook as the source-of-truth build path
-for the ontology the backend reads at startup. Output goes to three Postgres
-tables — not files:
+for the ontology the backend reads at startup. The build chain is layered:
 
-  * ``communities``   — scored Census Tracts (PCA composite)
-  * ``facilities``    — cooling/warming centres
-  * ``pca_loadings``  — PCA factor loadings per scenario
+  raw.*        -- as-fetched payloads from each upstream source
+  staging.*    -- typed, cleaned, deduplicated tables
+  curated.*    -- joined feature table (model + serving input)
+  ml.*         -- versioned PCA model artifacts + per-CT scores
+  public.*     -- the three tables the backend reads at startup
 
-The notebook is retained as a judge-facing exploration tool but no longer
-authoritative. Run the build with::
+Run the full chain with::
 
     python -m app.pipeline
 
-Tier C live data (weather, outages) is intentionally NOT snapshotted here —
+Run a single stage (useful while iterating)::
+
+    python -m app.pipeline --stage train
+
+Tier C live data (weather, outages) is intentionally NOT snapshotted here --
 those are served live via ``app.services.weather`` / ``app.services.outages``.
 
-Note: this package's submodules pull in heavy deps (geopandas, scikit-learn).
-We deliberately do NOT re-export ``build_all`` here so importing a single
-submodule (e.g. ``app.pipeline.scoring``) doesn't drag in the orchestrator.
+Note: this package's submodules pull in heavy deps (geopandas, scikit-learn,
+prefect, mlflow, pandera). We deliberately do NOT re-export them here so
+importing a single submodule doesn't drag in the orchestrator.
 """
