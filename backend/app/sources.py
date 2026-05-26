@@ -65,14 +65,6 @@ _REGISTRY: dict[str, SourceCitation] = {
         vintage="live",
         url="https://flood-api.open-meteo.com/v1/flood",
     ),
-    # Legacy slug used in EDA loadings.csv before rename; kept so factor lookups
-    # never silently 404.
-    "envcan-geomet-current": SourceCitation(
-        slug="envcan-geomet-current",
-        label="Open-Meteo Current Conditions (formerly EnvCan GeoMet)",
-        vintage="live",
-        url="https://api.open-meteo.com/v1/forecast",
-    ),
     "brampton-esri-recreation": SourceCitation(
         slug="brampton-esri-recreation",
         label="City of Brampton Recreation Facilities",

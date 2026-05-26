@@ -1,4 +1,4 @@
-"""Alectra service-area polygon — used to clip CTs to the utility's footprint."""
+"""Alectra service-area polygon -- used to clip CTs to the utility's footprint."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import logging
 import geopandas as gpd
 
 from ._http import get_json, get_text
-from .sources import ALECTRA_ITEM_URL
+from .urls import ALECTRA_ITEM_URL
 
 logger = logging.getLogger(__name__)
 

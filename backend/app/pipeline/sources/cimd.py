@@ -1,6 +1,6 @@
-"""A3 + A4 — Canadian Index of Social Vulnerability + Resilience.
+"""A3 + A4 -- Canadian Index of Social Vulnerability + Resilience.
 
-Both indices ship as DA-level CSVs. We download the DA→CT crosswalk, scope it
+Both indices ship as DA-level CSVs. We download the DA->CT crosswalk, scope it
 to Ontario CMAs 535/537, then mean-aggregate scores to the CT level.
 """
 
@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 
 from ._http import download_and_extract_zip
-from .sources import (
+from .urls import (
     CISR_URL,
     CISV_URL,
     DA_CT_CROSSWALK_URL,

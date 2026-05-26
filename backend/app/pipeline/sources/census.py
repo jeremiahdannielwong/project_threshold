@@ -1,4 +1,4 @@
-"""A2 — Brampton 2021 Census demographics via the City of Brampton ESRI FS.
+"""A2 -- Brampton 2021 Census demographics via the City of Brampton ESRI FS.
 
 Joins 4 ArcGIS layers (population, income, tenure/dwelling-age, low income) by
 CTUID and derives the percentage columns the score consumes.
@@ -11,7 +11,7 @@ import logging
 import httpx
 import pandas as pd
 
-from .sources import BRAMPTON_CENSUS_FS, HTTP_TIMEOUT_SECONDS
+from .urls import BRAMPTON_CENSUS_FS, HTTP_TIMEOUT_SECONDS
 
 logger = logging.getLogger(__name__)
 

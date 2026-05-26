@@ -29,6 +29,8 @@ services:
     environment:
       THRESHOLD_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-threshold}
       THRESHOLD_CORS_ORIGINS: ${THRESHOLD_CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
+      THRESHOLD_MLFLOW_TRACKING_URI: http://mlflow:5000
+      THRESHOLD_PREFECT_API_URL: http://prefect:4200/api
       # Pass through optional API keys if present in host env / .env file.
       OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
@@ -39,5 +41,40 @@ services:
     # THRESHOLD_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/threshold,
     # or `docker compose exec backend python -m app.pipeline` (uses an ephemeral cache).
 
+  # Orchestration UI + API. The pipeline registers @flow runs here so the team
+  # can see DAG, retries, and per-task logs at http://localhost:4200.
+  prefect:
+    image: prefecthq/prefect:3-latest
+    container_name: threshold-prefect
+    restart: unless-stopped
+    command: ["prefect", "server", "start", "--host", "0.0.0.0"]
+    environment:
+      PREFECT_UI_API_URL: http://localhost:4200/api
+      PREFECT_SERVER_API_HOST: 0.0.0.0
+      PREFECT_API_DATABASE_CONNECTION_URL: sqlite+aiosqlite:////data/prefect.db
+    ports:
+      - "${PREFECT_PORT:-4200}:4200"
+    volumes:
+      - threshold_prefect:/data
+
+  # MLflow tracking server. Models + metrics from `stages/train.py` land here;
+  # the UI at http://localhost:5000 shows experiment history.
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    container_name: threshold-mlflow
+    restart: unless-stopped
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+    ports:
+      - "${MLFLOW_PORT:-5000}:5000"
+    volumes:
+      - threshold_mlflow:/mlflow
+
 volumes:
   threshold_pgdata:
+  threshold_prefect:
+  threshold_mlflow:

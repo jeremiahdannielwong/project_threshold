@@ -6,19 +6,19 @@ Kept in one place so a broken endpoint is found and fixed once. Slugs match
 
 from __future__ import annotations
 
-# A1 — StatsCan 2021 Census Tract cartographic boundary file (~15 MB zip)
+# A1 -- StatsCan 2021 Census Tract cartographic boundary file (~15 MB zip)
 CT_BOUNDARIES_URL = (
     "https://www12.statcan.gc.ca/census-recensement/2021/geo/sip-pis/"
     "boundary-limites/files-fichiers/lct_000b21a_e.zip"
 )
 
-# A2 — City of Brampton ESRI Census 2021 FeatureServer
+# A2 -- City of Brampton ESRI Census 2021 FeatureServer
 BRAMPTON_CENSUS_FS = (
     "https://services3.arcgis.com/rl7ACuZkiFsmDA2g/ArcGIS/rest/services/"
     "Census_2021/FeatureServer"
 )
 
-# A3/A4 — Canadian Index of Social Vulnerability + Resilience (StatsCan 2025001)
+# A3/A4 -- Canadian Index of Social Vulnerability + Resilience (StatsCan 2025001)
 CISV_URL = "https://www150.statcan.gc.ca/pub/45-20-0001/2025001/csv/cisv-eng.zip"
 CISR_URL = "https://www150.statcan.gc.ca/pub/45-20-0001/2025001/csv/cisr-eng.zip"
 DA_CT_CROSSWALK_URL = (
@@ -32,7 +32,7 @@ ALECTRA_ITEM_URL = (
     "8eba357e1b124587884bccb724743c4c?f=json"
 )
 
-# Brampton facilities — recreation centres + libraries
+# Brampton facilities -- recreation centres + libraries
 BRAMPTON_REC_URL = (
     "https://services3.arcgis.com/rl7ACuZkiFsmDA2g/arcgis/rest/services/"
     "RecreationFacilities/FeatureServer/0"
@@ -54,3 +54,15 @@ TARGET_PROVINCE_PRUID = "35"  # Ontario
 
 HTTP_TIMEOUT_SECONDS = 120.0
 HTTP_USER_AGENT = "Threshold-Pipeline/0.1 (+https://threshold.ca)"
+
+
+# Source slug map -- stays in sync with the loaded raw.* table names so the
+# provenance trail survives from ingest to model loadings.
+SOURCE_SLUGS: dict[str, str] = {
+    "ct_boundaries": "statcan-ct-2021",
+    "census_2021": "brampton-esri-census2021",
+    "cisv_cisr_2021": "statcan-cimd-2025001",
+    "alectra_service_area": "alectra-service-area",
+    "facilities": "brampton-facilities-2024",
+    "neighbourhoods": "brampton-secondary-plan-areas",
+}
