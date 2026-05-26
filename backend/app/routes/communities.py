@@ -8,7 +8,13 @@ from fastapi import APIRouter, Depends, Query
 
 from ..deps import get_store, require_community
 from ..models.common import Envelope
-from ..models.community import CommunityDetail, CommunitySummary, Scenario
+from ..models.community import (
+    CommunityDetail,
+    CommunityFeature,
+    CommunityFeatureCollection,
+    CommunitySummary,
+    Scenario,
+)
 from ..services.data_loader import CommunityRecord, DataStore
 from ..services.scoring import to_detail, to_summary
 from ..sources import sources_for_factors
@@ -37,6 +43,36 @@ def list_communities(
 
     return Envelope(
         data=summaries,
+        sources=sources_for_factors(
+            [
+                "cisv_score",
+                "cisr_score",
+                "pct_renters",
+                "pct_pre1980",
+                "median_income",
+                "humidex",
+                "active_outages",
+            ]
+        ),
+    )
+
+
+@router.get("/features", response_model=Envelope[CommunityFeatureCollection])
+def list_community_features(
+    store: Annotated[DataStore, Depends(get_store)],
+) -> Envelope[CommunityFeatureCollection]:
+    """GeoJSON FeatureCollection of every CT polygon + its CommunitySummary.
+
+    Map-ready payload: drop the FeatureCollection straight into mapbox-gl /
+    leaflet without any transformation. Routed before the `/{ctuid}` path so
+    `features` is treated as a literal, not a ctuid lookup.
+    """
+    features = [
+        CommunityFeature(geometry=rec.geometry, properties=to_summary(rec), id=rec.ctuid)
+        for rec in store.list()
+    ]
+    return Envelope(
+        data=CommunityFeatureCollection(features=features),
         sources=sources_for_factors(
             [
                 "cisv_score",

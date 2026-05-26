@@ -68,3 +68,19 @@ class CommunityDetail(BaseModel):
     weather: dict[str, float | int | None]
     outages: dict[str, int]
     factors: list[FactorBreakdown]
+
+
+class CommunityFeature(BaseModel):
+    """One GeoJSON Feature wrapping a CT polygon + its CommunitySummary."""
+
+    type: Literal["Feature"] = "Feature"
+    geometry: dict | None = Field(description="GeoJSON Polygon / MultiPolygon, or null if unavailable.")
+    properties: CommunitySummary
+    id: str = Field(description="CTUID — duplicated on the Feature for map libraries that key by id.")
+
+
+class CommunityFeatureCollection(BaseModel):
+    """GeoJSON FeatureCollection of CT polygons. Map-friendly shape for choropleths."""
+
+    type: Literal["FeatureCollection"] = "FeatureCollection"
+    features: list[CommunityFeature]

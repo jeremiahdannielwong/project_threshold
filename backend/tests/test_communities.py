@@ -49,3 +49,31 @@ def test_community_detail_factor_breakdown(client: TestClient) -> None:
 def test_community_detail_not_found(client: TestClient) -> None:
     resp = client.get("/api/communities/9999999.99")
     assert resp.status_code == 404
+
+
+def test_community_features_geojson(client: TestClient) -> None:
+    resp = client.get("/api/communities/features")
+    assert resp.status_code == 200
+    body = resp.json()
+    fc = body["data"]
+    assert fc["type"] == "FeatureCollection"
+    assert len(fc["features"]) == 3
+
+    feat = next(f for f in fc["features"] if f["id"] == "5350528.20")
+    assert feat["type"] == "Feature"
+    assert feat["geometry"]["type"] == "Polygon"
+    assert feat["properties"]["ctuid"] == "5350528.20"
+    assert feat["properties"]["neighbourhood"] == "Springdale"
+    assert feat["properties"]["threshold_score_heatwave"] == 88.0
+    assert feat["properties"]["risk_level"] == "Critical"
+
+    # Sources at envelope level still dedupe.
+    slugs = [s["slug"] for s in body["sources"]]
+    assert len(slugs) == len(set(slugs))
+
+
+def test_community_features_does_not_collide_with_ctuid_route(client: TestClient) -> None:
+    """`/features` must hit the FeatureCollection route, not the {ctuid} route."""
+    resp = client.get("/api/communities/features")
+    assert resp.status_code == 200
+    assert resp.json()["data"]["type"] == "FeatureCollection"
