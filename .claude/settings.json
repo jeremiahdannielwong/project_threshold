@@ -24,11 +24,12 @@
       "WebFetch(domain:www.arcgis.com)",
       "WebFetch(domain:services1.arcgis.com)",
       "WebFetch(domain:flood-api.open-meteo.com)",
-      "Bash(pipeline/.venv/Scripts/python.exe -c ' *)",
-      "Bash(git check-ignore *)",
+      "Bash(python -m pytest tests/test_flood.py tests/test_persistence.py tests/test_weather.py -x --tb=short)",
+      "Bash(python -m pytest tests/test_flood.py tests/test_persistence.py tests/test_weather.py --tb=short)",
+      "Bash(python -m pytest --tb=short)",
       "Bash(git add *)",
-      "Bash(git reset *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }
