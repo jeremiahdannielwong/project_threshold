@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: threshold-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-threshold}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - threshold_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-threshold}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: threshold-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      THRESHOLD_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-threshold}
+      THRESHOLD_CORS_ORIGINS: ${THRESHOLD_CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
+      # Pass through optional API keys if present in host env / .env file.
+      OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    # No pipeline/data bind mount — the backend reads the ontology from Postgres.
+    # To run the pipeline against the dockerized DB, run on the host with
+    # THRESHOLD_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/threshold,
+    # or `docker compose exec backend python -m app.pipeline` (uses an ephemeral cache).
+
+volumes:
+  threshold_pgdata:

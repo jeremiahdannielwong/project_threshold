@@ -1,0 +1,30 @@
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.venv/
+**/venv/
+**/env/
+
+# Local secrets — never bake these into images.
+**/.env
+**/.env.*
+!**/.env.example
+
+# VCS / editor noise
+.git/
+.gitignore
+.vscode/
+.idea/
+*.swp
+
+# Frontend (not part of the backend image)
+frontend/
+
+# Docs / notebooks (not needed in the runtime image)
+docs/
+*.ipynb_checkpoints/
+
+# Compose-managed data dirs
+.docker-data/
