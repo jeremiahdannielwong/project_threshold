@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
-from pydantic_ai.models.google import GeminiModel
+from pydantic_ai.models.google import GoogleModel as GeminiModel
 
 from ..config import Settings
 from ..models.briefing import BriefingResponse

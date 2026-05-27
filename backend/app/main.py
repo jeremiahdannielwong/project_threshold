@@ -28,6 +28,7 @@ from .routes import (
     communities,
     extreme_plan,
     facilities,
+    finance,
     flood,
     health,
     outages,
@@ -36,6 +37,7 @@ from .routes import (
     weather,
 )
 from .services.data_loader import load_data_store
+from .services.finance import FinanceService
 from .services.flood import FloodService
 from .services.llm import BriefingService
 from .services.outages import OutageService
@@ -75,6 +77,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             client=app.state.http_client,
         )
         app.state.briefing_service = BriefingService(settings, client=app.state.http_client)
+        app.state.finance_service = FinanceService(settings, client=app.state.http_client)
         logger.info(
             "Threshold backend ready — %d communities loaded from Postgres.",
             len(app.state.store.communities),
@@ -120,6 +123,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(briefing.router)
     app.include_router(recommendations.router)
     app.include_router(extreme_plan.router)
+    app.include_router(finance.router)
 
     return app
 

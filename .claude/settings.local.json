@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(/Users/jeremiahwong/.local/bin/md-to-pdf --version)",
+      "Read(//Users/jeremiahwong/.local/bin/**)",
+      "Bash(docker info *)",
+      "Bash(docker compose *)",
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(curl -s http://localhost:8000/)",
+      "Bash(docker exec threshold-backend *)",
+      "Bash(docker run *)",
+      "Bash(curl -s http://localhost:8000/api/communities)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'{len\\(d[\\\\\"data\\\\\"]\\)} communities loaded'\\)\")"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "github"
+  ]
+}

@@ -2,66 +2,314 @@
 @tailwind components;
 @tailwind utilities;
 
-/* RGB triplets (no commas) so Tailwind's opacity modifiers work: rgb(var(--c-x) / 0.15) */
-:root, [data-theme="dark"] {
-  --c-base:     13 17 23;
-  --c-panel:    22 28 42;
-  --c-card:     28 35 54;
-  --c-hover:    35 46 69;
-  --c-border:   45 58 82;
-  --c-primary:  230 234 240;
-  --c-muted:    122 143 168;
-  --c-accent:   59 130 246;
-  --c-orange:   245 158 11;
-  --c-low:      52 211 153;
-  --c-moderate: 251 191 36;
-  --c-high:     249 115 22;
-  --c-critical: 244 63 94;
-  --c-map-bg:   #0D0D0D;
-  --c-popup-bg: #1A1A1A;
-  --c-popup-bd: #2A2A2A;
-  --c-scroll:   #2A2A2A;
-}
+/* ─────────────────────────────────────────────────────────────
+   Threshold — institutional design tokens
+   Single palette. Single theme. Restraint as care.
+   ───────────────────────────────────────────────────────────── */
 
-[data-theme="mono"] {
-  --c-base:     255 255 255;
-  --c-panel:    245 245 245;
-  --c-card:     235 235 235;
-  --c-hover:    224 224 224;
-  --c-border:   200 200 200;
-  --c-primary:  10 10 10;
-  --c-muted:    88 88 88;
-  --c-accent:   10 10 10;
-  --c-orange:   10 10 10;
-  --c-low:      64 64 64;
-  --c-moderate: 96 96 96;
-  --c-high:     26 26 26;
-  --c-critical: 0 0 0;
-  --c-map-bg:   #F0F0F0;
+:root, [data-theme="light"], [data-theme="dark"] {
+  /* Canvas */
+  --canvas:        #FAFAF7;   /* warm off-white, the room */
+  --surface:       #FFFFFF;   /* cards, panels */
+  --surface-2:     #F4F2EC;   /* recessed */
+  --hairline:      #E8E4D8;   /* the only divider weight */
+  --hairline-2:    #D9D4C5;   /* slightly stronger hairline */
+
+  /* Ink */
+  --ink:           #0F172A;   /* primary text, action affordances */
+  --ink-2:         #3F3F46;   /* secondary text */
+  --ink-3:         #71717A;   /* tertiary, captions */
+  --ink-4:         #A1A1AA;   /* disabled, faint */
+
+  /* The single chromatic register: vulnerability */
+  --alert:         #9A3412;   /* deep ember */
+  --alert-deep:    #7C2D12;   /* upper critical */
+  --alert-mid:     #C2410C;   /* high */
+  --alert-soft:    #D5A878;   /* moderate */
+  --alert-quiet:   #E8D8B9;   /* low-moderate */
+  --alert-canvas:  #EFEAE0;   /* indistinguishable from canvas */
+
+  /* Operational accents — used with extreme restraint */
+  --warning:       #854D0E;   /* stale data, advisory */
+  --positive:      #3F6212;   /* restoration, intervention success */
+
+  /* Tailwind-bridge RGB triplets (so opacity modifiers still work) */
+  --c-base:     250 250 247;
+  --c-panel:    255 255 255;
+  --c-card:     255 255 255;
+  --c-hover:    244 242 236;
+  --c-border:   232 228 216;
+  --c-primary:  15 23 42;
+  --c-muted:    113 113 122;
+  --c-accent:   15 23 42;
+  --c-orange:   154 52 18;
+  --c-low:      63 98 18;
+  --c-moderate: 133 77 14;
+  --c-high:     194 65 12;
+  --c-critical: 154 52 18;
+  --c-map-bg:   #FAFAF7;
   --c-popup-bg: #FFFFFF;
-  --c-popup-bd: #C8C8C8;
-  --c-scroll:   #C8C8C8;
+  --c-popup-bd: #E8E4D8;
+  --c-scroll:   #D9D4C5;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* Type scale */
+  --type-micro:   11px;
+  --type-caption: 12px;
+  --type-body:    14px;
+  --type-subhead: 15px;
+  --type-title:   18px;
+  --type-figure:  28px;
+  --type-display: 48px;
+
+  /* Motion */
+  --ease:           cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-instant:    80ms;
+  --dur-brisk:      180ms;
+  --dur-deliberate: 320ms;
+  --dur-atmospheric: 640ms;
 }
 
 * { box-sizing: border-box; }
 
-body {
-  background: var(--c-base);
-  color: var(--c-primary);
+html, body {
+  background: var(--canvas);
+  color: var(--ink);
   margin: 0;
   font-family: 'Inter', system-ui, sans-serif;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
 }
 
-.leaflet-container { background: var(--c-map-bg) !important; }
-.leaflet-popup-content-wrapper {
-  background: var(--c-popup-bg);
-  color: var(--c-primary);
-  border: 1px solid var(--c-popup-bd);
+/* All numeric typography is tabular */
+.tabular, .font-mono, [data-tabular] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Structural primitives ─────────────────────────────────── */
+
+.ribbon {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-4);
+  background: var(--surface);
+  border-bottom: 0.5px solid var(--hairline);
+  flex-shrink: 0;
+}
+
+.layer-rail {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  bottom: 10px;
+  width: 36px;
+  background: var(--surface);
+  border: 0.5px solid var(--hairline);
   border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2) 0;
+  gap: var(--space-1);
+  z-index: 600;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+}
+
+.status-strip {
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-4);
+  background: var(--surface);
+  border-top: 0.5px solid var(--hairline);
+  font-size: var(--type-micro);
+  color: var(--ink-3);
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.dispatch-card {
+  position: absolute;
+  left: 56px;
+  top: 10px;
+  bottom: 10px;
+  width: 380px;
+  background: var(--surface);
+  border: 0.5px solid var(--hairline);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 560;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.10);
+  animation: sidebar-enter var(--dur-deliberate) var(--ease);
+}
+
+@keyframes sidebar-enter {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes dispatch-rise {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.watchlist-tray {
+  position: absolute;
+  width: 320px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  z-index: 550;
+  animation: tray-slide var(--dur-brisk) var(--ease);
+}
+
+@keyframes tray-slide {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Restraint primitives */
+.micro {
+  font-size: var(--type-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
+.caption {
+  font-size: var(--type-caption);
+  color: var(--ink-3);
+  line-height: 1.5;
+}
+
+.figure {
+  font-size: var(--type-figure);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  line-height: 1;
+}
+
+.title {
+  font-size: var(--type-title);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+/* Map */
+.leaflet-container {
+  background: var(--canvas) !important;
+  font-family: 'Inter', system-ui, sans-serif !important;
+}
+.leaflet-control-attribution {
+  background: rgba(255,255,255,0.7) !important;
+  font-size: 10px !important;
+  color: var(--ink-4) !important;
+}
+.leaflet-popup-content-wrapper {
+  background: var(--surface);
+  color: var(--ink);
+  border: 0.5px solid var(--hairline);
+  border-radius: 4px;
   box-shadow: none;
 }
-.leaflet-popup-tip { background: var(--c-popup-bg); }
-::-webkit-scrollbar { width: 4px; }
+.leaflet-popup-tip { background: var(--surface); border: 0.5px solid var(--hairline); }
+.leaflet-tooltip {
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+  border: 0.5px solid var(--hairline) !important;
+  border-radius: 3px !important;
+  box-shadow: 0 1px 2px rgba(15,23,42,0.06) !important;
+  font-size: 12px !important;
+  padding: 6px 10px !important;
+}
+.leaflet-tooltip-top:before { border-top-color: var(--hairline) !important; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--c-scroll); border-radius: 2px; }
+::-webkit-scrollbar-thumb { background: var(--hairline-2); border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-4); }
+
+/* Focus ring — discreet, geometric */
+:focus-visible {
+  outline: 1px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 80ms !important;
+  }
+}
+
+/* ─── Print — incident brief ────────────────────────────────
+   Triggered by the print button in the dispatch card. Strips every
+   chrome surface and renders only the dispatch card content full-width.
+   Produces a one-page printable / save-as-PDF that operators can sign,
+   email, or file with a regulator.
+*/
+@media print {
+  @page { size: Letter; margin: 18mm 18mm 18mm 18mm; }
+
+  html, body { background: white !important; height: auto !important; overflow: visible !important; }
+
+  /* Hide chrome */
+  .ribbon, .layer-rail, .status-strip, .watchlist-tray,
+  [data-activity-tray],
+  .leaflet-container, .leaflet-popup,
+  .resident-view header {
+    display: none !important;
+  }
+
+  /* Promote the dispatch card to a full-page document */
+  .dispatch-card {
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    animation: none !important;
+    overflow: visible !important;
+  }
+  .dispatch-card > * { overflow: visible !important; }
+  .dispatch-card .overflow-y-auto { overflow: visible !important; max-height: none !important; }
+
+  /* Operator note edit chrome should not print */
+  .print\:hidden { display: none !important; }
+
+  /* Add a print-only document header */
+  .dispatch-card::before {
+    content: "Threshold · Incident Brief · " attr(data-print-stamp);
+    display: block;
+    font-size: 10pt;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #71717A;
+    border-bottom: 0.5pt solid #E8E4D8;
+    padding-bottom: 8pt;
+    margin-bottom: 12pt;
+  }
+}

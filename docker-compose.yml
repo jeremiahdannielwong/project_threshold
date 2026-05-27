@@ -60,7 +60,7 @@ services:
       THRESHOLD_PREFECT_API_URL: http://prefect:4200/api
       MLFLOW_TRACKING_INSECURE_TLS: "true"
     volumes:
-      - ./pipeline/data:/pipeline/data:ro
+      - ./pipeline/data:/pipeline/data
 
   # Orchestration UI + API. The pipeline registers @flow runs here so the team
   # can see DAG, retries, and per-task logs at http://localhost:4200.

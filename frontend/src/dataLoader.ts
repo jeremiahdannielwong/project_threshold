@@ -56,6 +56,25 @@ function num(v: number | null | undefined, fallback = 0): number {
   return v == null || Number.isNaN(v) ? fallback : v;
 }
 
+/**
+ * Normalize a percentage field to a proportion in [0, 1].
+ *
+ * The upstream census feed returns these as percentages (e.g., 23.4 meaning
+ * 23.4%). The pipeline divides by 100 before persisting, but the previous
+ * `Math.min(value, 1)` defence silently clamped every value to 1.0 whenever
+ * the pipeline regressed — producing the "100% across all tracts" symptom.
+ *
+ * This normalizer handles both units transparently: anything ≥ 1.5 is assumed
+ * to be a percentage and is divided by 100; anything below is assumed to be a
+ * proportion. Either way the result is clamped to [0, 1].
+ */
+function normPct(v: number | null | undefined): number {
+  const n = num(v);
+  if (n <= 0) return 0;
+  const proportion = n >= 1.5 ? n / 100 : n;
+  return Math.min(Math.max(proportion, 0), 1);
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`${url} → ${r.status} ${r.statusText}`);
@@ -89,9 +108,9 @@ export async function loadData(): Promise<{ tracts: Tract[]; facilities: Facilit
       geometry: f.geometry as unknown as Tract['geometry'],
       population: num(p.population),
       median_income: num(p.median_income),
-      pct_renters: num(p.pct_renters),
-      pct_pre1980: num(p.pct_pre1980),
-      pct_low_income: Math.min(num(p.pct_low_income), 1),
+      pct_renters: normPct(p.pct_renters),
+      pct_pre1980: normPct(p.pct_pre1980),
+      pct_low_income: normPct(p.pct_low_income),
       cisv_score: num(p.cisv_score),
       cisv_dim1: num(p.cisv_dim1),
       cisv_dim2: num(p.cisv_dim2),
