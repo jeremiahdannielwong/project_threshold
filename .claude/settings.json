@@ -32,7 +32,32 @@
       "Bash(git push *)",
       "Bash(python -m pytest)",
       "Bash(git commit *)",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(docker version *)",
+      "Bash(npm install *)",
+      "Bash(docker run *)",
+      "Bash(npm run *)",
+      "Bash(curl -s http://localhost:8000/api/communities)",
+      "Bash(python -m py_compile app/services/llm.py app/services/feed.py app/routes/feed.py app/routes/briefing.py app/models/feed.py app/config.py app/main.py)",
+      "Bash(python -c \"from app.main import create_app; from app.config import Settings; app = create_app\\(Settings\\(THRESHOLD_DATABASE_URL=None, GEMINI_API_KEY=None, THRESHOLD_FEED_SWEEP_DISABLED=True\\)\\); print\\('OK', [r.path for r in app.routes if hasattr\\(r,'path'\\) and '/feed' in r.path]\\)\")",
+      "Bash(curl -s http://localhost:8000/api/feed/status)",
+      "Bash(python -m json.tool)",
+      "Bash(curl -s \"http://localhost:8000/api/feed/lookup?postal=L6R\")",
+      "Bash(curl -s \"http://localhost:8000/api/feed/5350576.92\")",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\)['data']['briefing']['briefing']; print\\(repr\\(d[:200]\\)\\)\")",
+      "Bash(docker exec *)",
+      "Bash(git stash *)",
+      "mcp__claude_ai_Context7__resolve-library-id",
+      "Bash(python -c \"import fastmcp; print\\(fastmcp.__version__\\)\")",
+      "Bash(pip install *)",
+      "Bash(python -m pytest -q)",
+      "Bash(pip show *)",
+      "Bash(python -c \"import slowapi\")",
+      "Bash(python -m pytest -q tests/test_health.py tests/test_outages.py tests/test_briefing.py tests/test_recommendations.py tests/test_weather.py tests/test_flood.py tests/test_extreme_plan.py tests/test_persistence.py)",
+      "WebFetch(domain:open.canada.ca)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\danny\\.claude\\projects\\d--Study-Side-hobbies-Hackathon-senecahackathon2026-repo-project-threshold"
     ]
   }
 }

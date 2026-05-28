@@ -23,11 +23,13 @@ from slowapi.errors import RateLimitExceeded
 
 from .config import Settings, get_settings
 from .db import Database
+from .mcp_server import build_mcp_app, compose_lifespan
 from .routes import (
     briefing,
     communities,
     extreme_plan,
     facilities,
+    feed,
     finance,
     flood,
     health,
@@ -37,6 +39,7 @@ from .routes import (
     weather,
 )
 from .services.data_loader import load_data_store
+from .services.feed import FeedCache, FeedSweepService
 from .services.finance import FinanceService
 from .services.flood import FloodService
 from .services.llm import BriefingService
@@ -56,7 +59,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    async def threshold_lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.settings = settings
         # DB must come up before the store — the store is loaded from it.
         app.state.db = Database(settings)
@@ -78,6 +81,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         app.state.briefing_service = BriefingService(settings, client=app.state.http_client)
         app.state.finance_service = FinanceService(settings, client=app.state.http_client)
+        # Ambient feed: cache + background sweep that keeps every CT's
+        # Gemini briefing fresh on a fixed cadence. Routes read from the
+        # cache; the LLM never runs in the request path.
+        app.state.feed_cache = FeedCache()
+        app.state.feed_sweep = FeedSweepService(
+            store=app.state.store,
+            briefing_service=app.state.briefing_service,
+            weather_service=app.state.weather_service,
+            outage_service=app.state.outage_service,
+            cache=app.state.feed_cache,
+            interval_seconds=settings.feed_sweep_interval_seconds,
+        )
+        if not settings.feed_sweep_disabled and app.state.store.communities:
+            app.state.feed_sweep.start()
+            logger.info(
+                "Ambient feed sweep started — interval %ds across %d communities.",
+                settings.feed_sweep_interval_seconds,
+                len(app.state.store.communities),
+            )
+        else:
+            logger.info(
+                "Ambient feed sweep NOT started (disabled=%s, communities=%d).",
+                settings.feed_sweep_disabled,
+                len(app.state.store.communities),
+            )
         logger.info(
             "Threshold backend ready — %d communities loaded from Postgres.",
             len(app.state.store.communities),
@@ -85,6 +113,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            await app.state.feed_sweep.stop()
             await app.state.briefing_service.aclose()
             await app.state.http_client.aclose()
             await app.state.db.dispose()
@@ -99,7 +128,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "Every numeric value is traceable to a named public dataset."
         ),
         default_response_class=ORJSONResponse,
-        lifespan=lifespan,
     )
 
     app.state.limiter = limiter
@@ -124,6 +152,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(recommendations.router)
     app.include_router(extreme_plan.router)
     app.include_router(finance.router)
+    app.include_router(feed.router)
+
+    # Auto-derive an MCP server from the FastAPI route surface and mount it
+    # at /mcp. The MCP session manager has its own lifespan, so we wrap it
+    # around the Threshold lifespan and assign the composed context onto the
+    # app router (Starlette reads lifespan from router.lifespan_context).
+    _mcp, mcp_asgi_app = build_mcp_app(app)
+    app.router.lifespan_context = compose_lifespan(threshold_lifespan, mcp_asgi_app)
+    app.mount("/mcp", mcp_asgi_app)
 
     return app
 

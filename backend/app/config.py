@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     gemini_model: str = Field(default="gemini-2.0-flash", alias="GEMINI_MODEL")
     gemini_timeout_seconds: float = Field(default=10.0, alias="GEMINI_TIMEOUT_SECONDS")
 
+    # Ambient feed: how often the background sweep regenerates every CT's
+    # briefing. Default 1 hour; lower in dev (e.g. 120) for demos.
+    feed_sweep_interval_seconds: int = Field(default=3600, alias="THRESHOLD_FEED_SWEEP_INTERVAL")
+    # Set true to skip launching the sweep loop (useful in tests).
+    feed_sweep_disabled: bool = Field(default=False, alias="THRESHOLD_FEED_SWEEP_DISABLED")
+
     # When unset the persistence layer is disabled and DB-backed helpers no-op.
     database_url: str | None = Field(default=None, alias="THRESHOLD_DATABASE_URL")
 

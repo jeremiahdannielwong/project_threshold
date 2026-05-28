@@ -38,7 +38,7 @@ async def post_briefing(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Census Tract {body.ctuid!r} not found.",
         )
-    briefing = await service.brief(rec, body.scenario)
+    briefing = await service.brief(rec, body.scenario, store=store)
     return Envelope(
         data=briefing,
         sources=sources_for_factors(
