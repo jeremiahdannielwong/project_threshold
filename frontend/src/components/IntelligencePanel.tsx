@@ -13,6 +13,7 @@ import { buildIntelligence } from '../intelligence';
 import { advisoriesFor } from '../advisories';
 import type { AdvisoryUrgency } from '../advisories';
 import { URGENCY_COLOR } from '../advisories';
+import { scoreFor, rampColor, rampLabel, formatPct } from '../utils';
 
 /**
  * Intelligence — always-on right sidebar.
@@ -192,7 +193,7 @@ const LENS_HEADER: Record<IntelLens, { title: string; subtitle: string }> = {
 export default function IntelligencePanel() {
   const {
     tracts, lens, feeds, rollupByTract, citywideCounts,
-    scenario, finance, percentiles, forecastPoints,
+    scenario, finance, percentiles, forecastPoints, selected,
   } = useApp();
 
   const [advisoriesOpen, setAdvisoriesOpen] = useState(true);
@@ -208,8 +209,14 @@ export default function IntelligencePanel() {
     [allItems, lens],
   );
 
-  /* City-wide advisories with full detail */
+  /* When a tract is selected: show its advisories; otherwise city-wide */
+  const tractAdvisories = useMemo(
+    () => selected ? advisoriesFor(selected, scenario, finance) : [],
+    [selected, scenario, finance],
+  );
+
   const cityAdvisories = useMemo(() => {
+    if (selected) return null; // use tractAdvisories instead
     const rows: { headline: string; urgency: AdvisoryUrgency; detail: string; timeframe: string }[] = [];
     const seen = new Set<string>();
     for (const tract of tracts) {
@@ -221,9 +228,25 @@ export default function IntelligencePanel() {
     }
     const order: Record<AdvisoryUrgency, number> = { critical: 0, elevated: 1, routine: 2 };
     return rows.sort((a, b) => order[a.urgency] - order[b.urgency]).slice(0, 6);
-  }, [tracts, scenario, finance]);
+  }, [selected, tracts, scenario, finance]);
 
-  const totalActive = citywideCounts.critical + citywideCounts.elevated + citywideCounts.routine;
+  /* Neighbourhood-focused intelligence: items that mention the selected tract */
+  const focusedItems = useMemo(() => {
+    if (!selected) return lensItems;
+    const name = selected.neighbourhood;
+    const matching = lensItems.filter(i => i.affectedTracts?.includes(name));
+    return matching.length > 0 ? matching : lensItems;
+  }, [lensItems, selected]);
+
+  const totalActive = selected
+    ? tractAdvisories.length
+    : citywideCounts.critical + citywideCounts.elevated + citywideCounts.routine;
+
+  /* Neighbourhood summary stats */
+  const tractScore = selected ? scoreFor(selected, scenario) : null;
+  const tractPct   = selected ? (percentiles.get(selected.ctuid) ?? 0) : null;
+  const tractLabel = tractPct !== null ? rampLabel(tractPct) : null;
+  const tractColor = tractPct !== null ? rampColor(tractPct) : null;
 
   /* Feed health */
   const weatherOk   = !feeds.weather.error;
@@ -236,30 +259,32 @@ export default function IntelligencePanel() {
   if (lens === 'resident') return null;
 
   const lensKey = lens as IntelLens;
-  const header = LENS_HEADER[lensKey];
-  const criticalCount = lensItems.filter(i => i.urgency === 'critical').length;
-  const elevatedCount = lensItems.filter(i => i.urgency === 'elevated').length;
+  const header  = LENS_HEADER[lensKey];
+  const criticalCount = focusedItems.filter(i => i.urgency === 'critical').length;
+  const elevatedCount = focusedItems.filter(i => i.urgency === 'elevated').length;
+
+  const advisoryList = selected ? tractAdvisories : (cityAdvisories ?? []);
 
   return (
     <aside
-      className="flex flex-col bg-surface overflow-hidden"
+      className="flex flex-col overflow-hidden"
       style={{
-        position: 'absolute',
-        right: 10,
-        top: 10,
-        bottom: 10,
+        flexShrink: 0,
         width: 288,
+        margin: '10px 10px 10px 10px',
+        background: '#ffffff',
         borderRadius: 8,
         border: '0.5px solid var(--hairline)',
         boxShadow: '0 4px 20px rgba(15,23,42,0.10)',
-        zIndex: 500,
       }}
       aria-label="Preparedness intelligence"
     >
       {/* ── Panel header ───────────────────────────────────── */}
       <div className="px-4 pt-3 pb-3 border-b border-hairline flex-shrink-0">
         <div className="text-[11px] font-medium" style={{ color: 'var(--ink)' }}>{header.title}</div>
-        <div className="text-[10px] mt-0.5" style={{ color: 'var(--ink-3)' }}>{header.subtitle}</div>
+        <div className="text-[10px] mt-0.5" style={{ color: 'var(--ink-3)' }}>
+          {selected ? selected.neighbourhood : header.subtitle}
+        </div>
         {(criticalCount > 0 || elevatedCount > 0) && (
           <div className="flex items-center gap-2 mt-2">
             {criticalCount > 0 && (
@@ -282,20 +307,48 @@ export default function IntelligencePanel() {
         )}
       </div>
 
+      {/* ── Neighbourhood focus strip ─────────────────────── */}
+      {selected && tractScore !== null && tractColor && tractLabel && (
+        <div
+          className="px-4 py-2.5 border-b border-hairline flex items-center justify-between flex-shrink-0"
+          style={{ background: `${tractColor}0A` }}
+        >
+          <div>
+            <div className="text-[9px] uppercase tracking-[0.14em]" style={{ color: 'var(--ink-3)' }}>
+              Neighbourhood focus
+            </div>
+            <div className="text-[11px] mt-0.5" style={{ color: 'var(--ink-2)' }}>
+              {formatPct(selected.pct_renters)} renters · {selected.population.toLocaleString()} pop
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[20px] font-medium tabular leading-none" style={{ color: tractColor }}>
+              {tractScore.toFixed(0)}
+            </div>
+            <div
+              className="text-[9px] uppercase tracking-[0.1em] mt-0.5 px-1.5 py-0.5"
+              style={{ color: tractColor, background: `${tractColor}18`, borderRadius: 3 }}
+            >
+              {tractLabel}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto min-h-0">
 
         {/* ── 1. Proactive Intelligence Items ──────────────── */}
-        {lensItems.length === 0 ? (
+        {focusedItems.length === 0 ? (
           <div className="px-4 py-4 text-[12px] border-b border-hairline" style={{ color: 'var(--ink-3)' }}>
             No active intelligence items for this lens. Conditions within normal operational parameters.
           </div>
         ) : (
-          lensItems.map(item => <IntelCard key={item.id} item={item} />)
+          focusedItems.map(item => <IntelCard key={item.id} item={item} />)
         )}
 
         {/* ── 2. Active Advisories (collapsible) ───────────── */}
         <SectionHeader
-          label="Active advisories"
+          label={selected ? 'Neighbourhood advisories' : 'Active advisories'}
           right={
             <div className="flex items-center gap-2">
               {totalActive > 0 && (
@@ -318,12 +371,12 @@ export default function IntelligencePanel() {
         />
 
         {advisoriesOpen && (
-          cityAdvisories.length === 0 ? (
+          advisoryList.length === 0 ? (
             <div className="px-4 py-3 text-[12px] border-b border-hairline" style={{ color: 'var(--ink-3)' }}>
-              No active advisories. Standing readiness.
+              {selected ? 'No advisories for this neighbourhood. Standing readiness.' : 'No active advisories. Standing readiness.'}
             </div>
           ) : (
-            cityAdvisories.map((adv, i) => (
+            advisoryList.map((adv, i) => (
               <div
                 key={i}
                 className="px-4 py-3 border-b border-hairline cursor-pointer hover:bg-surface-2/60 transition-colors"

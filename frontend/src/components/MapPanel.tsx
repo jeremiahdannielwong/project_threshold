@@ -3,16 +3,36 @@ import L from 'leaflet';
 import { useApp } from '../context';
 import { rampColor, scoreFor, rampLabel } from '../utils';
 import type { AdvisoryUrgency } from './../advisories';
-import { TRANSIT_CORRIDORS, HYDRO_CORRIDORS, SERVICE_POINTS, SERVICE_VISUAL } from '../staticLayers';
+import { SERVICE_POINTS, SERVICE_VISUAL } from '../staticLayers';
+
+/**
+ * Location-pin primitive — teardrop with the kind's icon nested in the head.
+ * White interior + coloured stroke reads as a proper map marker (the
+ * "this thing is here" affordance) rather than a flat tile.
+ *
+ * Pin viewBox is 24×28; tip sits at (12, 26.5) so iconAnchor lands on the
+ * geographic coordinate. Subtle drop-shadow gives it lift over the choropleth
+ * without competing with it.
+ */
+function pinIcon(color: string, innerSvg: string): L.DivIcon {
+  return L.divIcon({
+    html: `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="42" viewBox="0 0 24 28"
+      style="filter:drop-shadow(0 2px 3px rgba(15,23,42,0.30));">
+      <path d="M12 1.5C6.5 1.5 2 6 2 11c0 6.5 10 15.5 10 15.5S22 17.5 22 11c0-5-4.5-9.5-10-9.5z"
+        fill="#FFFFFF" stroke="${color}" stroke-width="1.5" stroke-linejoin="round"/>
+      <g transform="translate(7.5 4.5) scale(0.375)"
+        fill="none" stroke="${color}" stroke-width="3"
+        stroke-linecap="round" stroke-linejoin="round">${innerSvg}</g>
+    </svg>`,
+    className: '',
+    iconSize: [36, 42],
+    iconAnchor: [18, 40],
+  });
+}
 
 function servicePointIcon(kind: keyof typeof SERVICE_VISUAL): L.DivIcon {
-  const visual = SERVICE_VISUAL[kind];
-  return L.divIcon({
-    html: `<div style="width:14px;height:14px;display:flex;align-items:center;justify-content:center;background:rgba(250,250,247,0.95);border:0.5px solid #3F3F46;color:#3F3F46;font-family:Inter,sans-serif;font-size:9px;font-weight:500;line-height:1;">${visual.glyph}</div>`,
-    className: '',
-    iconSize: [14, 14],
-    iconAnchor: [7, 7],
-  });
+  const v = SERVICE_VISUAL[kind];
+  return pinIcon(v.color, v.svg);
 }
 
 /** Visual urgency tokens for the on-map advisory pips. */
@@ -44,18 +64,14 @@ function advisoryIcon(urg: AdvisoryUrgency, count: number): L.DivIcon {
   });
 }
 
-const shelterHtml = `<div style="width:14px;height:14px;display:flex;align-items:center;justify-content:center;background:#FFFFFF;border:0.5px solid #0F172A;">
-  <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#0F172A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
-  </svg>
-</div>`;
-
-const SHELTER_ICON = L.divIcon({
-  html: shelterHtml,
-  className: '',
-  iconSize: [14, 14],
-  iconAnchor: [7, 7],
-});
+// Shelter / cooling centre — same location-pin shape as services so the
+// whole map shares a single marker vocabulary. Deep-ink stroke marks them
+// as the operational anchor without going dark/heavy.
+const SHELTER_ICON = pinIcon(
+  '#0F172A',
+  '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/>' +
+  '<path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'
+);
 
 const OUTAGE_ICON = L.divIcon({
   html: '<div style="width:6px;height:6px;border-radius:50%;background:#9A3412;border:0.5px solid #7C2D12;"></div>',
@@ -63,6 +79,36 @@ const OUTAGE_ICON = L.divIcon({
   iconSize: [6, 6],
   iconAnchor: [3, 3],
 });
+
+// Hospital — red medical cross. ER anchors for heat/cold surge planning.
+const HOSPITAL_ICON = pinIcon(
+  '#B91C1C',
+  '<path d="M11 2a2 2 0 0 0-2 2v5H4a2 2 0 0 0-2 2v2c0 1.1.9 2 2 2h5v5c0 1.1.9 2 2 2h2a2 2 0 0 0 2-2v-5h5a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2h-5V4a2 2 0 0 0-2-2z"/>'
+);
+
+// Long-term care home — bed glyph. The most heat/cold-fragile residents.
+const LTC_ICON = pinIcon(
+  '#7C3AED',
+  '<path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/>'
+);
+
+// AQHI band → tint. Mirrors Canada's Air Quality Health Index colour scale.
+function aqhiColor(band: string | undefined): string {
+  switch (band) {
+    case 'Low':       return '#22C55E';
+    case 'Moderate':  return '#F59E0B';
+    case 'High':      return '#EF4444';
+    case 'Very High': return '#7F1D1D';
+    default:          return '#94A3B8';
+  }
+}
+
+interface MapPoint { name: string; lat: number; lng: number; meta: string; }
+interface AqhiCell { aqhi: number; band: string; pm25: number | null; }
+
+// Census CTUIDs arrive as "5350573.06" in both the API and the static geojson;
+// normalise to a plain string key so the AQHI join is exact.
+const ctKey = (v: unknown): string => String(v ?? '').trim();
 
 export default function MapPanel() {
   const {
@@ -74,9 +120,15 @@ export default function MapPanel() {
   const geoRef = useRef<L.GeoJSON | null>(null);
   const markersRef = useRef<L.LayerGroup | null>(null);
   const advisoryLayerRef = useRef<L.LayerGroup | null>(null);
-  const transitLayerRef = useRef<L.LayerGroup | null>(null);
-  const hydroLayerRef   = useRef<L.LayerGroup | null>(null);
   const servicesLayerRef = useRef<L.LayerGroup | null>(null);
+  const hospitalsLayerRef = useRef<L.LayerGroup | null>(null);
+  const ltcLayerRef = useRef<L.LayerGroup | null>(null);
+  const aqhiLayerRef = useRef<L.LayerGroup | null>(null);
+
+  // Static layer data — fetched once from the pipeline-built geojson in /public.
+  const [hospitals, setHospitals] = React.useState<MapPoint[]>([]);
+  const [ltcHomes, setLtcHomes] = React.useState<MapPoint[]>([]);
+  const [aqhiByCt, setAqhiByCt] = React.useState<Map<string, AqhiCell>>(new Map());
 
   // Initialize map once
   useEffect(() => {
@@ -101,11 +153,14 @@ export default function MapPanel() {
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
     mapRef.current = map;
+    // AQHI tint sits directly above the risk choropleth (both polygons); the
+    // marker groups are added after so their pins float above every fill.
+    aqhiLayerRef.current = L.layerGroup().addTo(map);
     markersRef.current = L.layerGroup().addTo(map);
     advisoryLayerRef.current = L.layerGroup().addTo(map);
-    transitLayerRef.current  = L.layerGroup().addTo(map);
-    hydroLayerRef.current    = L.layerGroup().addTo(map);
     servicesLayerRef.current = L.layerGroup().addTo(map);
+    hospitalsLayerRef.current = L.layerGroup().addTo(map);
+    ltcLayerRef.current = L.layerGroup().addTo(map);
     return () => {
       map.remove();
       mapRef.current = null;
@@ -201,6 +256,20 @@ export default function MapPanel() {
     geoRef.current = layer;
   }, [tracts, scenario, selected, percentiles, setSelected]);
 
+  // Fly to selected tract bounds so watchlist clicks zoom the map to the neighbourhood
+  useEffect(() => {
+    if (!selected || !mapRef.current || !geoRef.current) return;
+    geoRef.current.eachLayer(lyr => {
+      const feat = (lyr as any).feature;
+      if (feat?.properties?.ctuid !== selected.ctuid) return;
+      const poly = lyr as unknown as L.Polygon;
+      const bounds = typeof poly.getBounds === 'function' ? poly.getBounds() : null;
+      if (bounds?.isValid?.()) {
+        mapRef.current!.flyToBounds(bounds, { padding: [60, 60], maxZoom: 15, duration: 0.7 });
+      }
+    });
+  }, [selected?.ctuid]);
+
   // Overlay markers from layer rail
   useEffect(() => {
     if (!markersRef.current) return;
@@ -262,41 +331,6 @@ export default function MapPanel() {
     });
   }, [tracts, rollupByTract, layers.advisories, selected, setSelected]);
 
-  /* ─── Transit corridors ─── */
-  useEffect(() => {
-    if (!transitLayerRef.current) return;
-    transitLayerRef.current.clearLayers();
-    if (!layers.transit) return;
-    TRANSIT_CORRIDORS.forEach(c => {
-      L.polyline(c.path, {
-        color: '#3F3F46',
-        weight: 1.8,
-        opacity: 0.65,
-        dashArray: '4 4',
-        lineCap: 'round',
-      })
-        .bindTooltip(c.name, { sticky: true, opacity: 1 })
-        .addTo(transitLayerRef.current!);
-    });
-  }, [layers.transit]);
-
-  /* ─── Hydro transmission ─── */
-  useEffect(() => {
-    if (!hydroLayerRef.current) return;
-    hydroLayerRef.current.clearLayers();
-    if (!layers.hydro) return;
-    HYDRO_CORRIDORS.forEach(c => {
-      L.polyline(c.path, {
-        color: '#854D0E',
-        weight: 1.4,
-        opacity: 0.55,
-        lineCap: 'square',
-      })
-        .bindTooltip(c.name, { sticky: true, opacity: 1 })
-        .addTo(hydroLayerRef.current!);
-    });
-  }, [layers.hydro]);
-
   /* ─── Social services points ─── */
   useEffect(() => {
     if (!servicesLayerRef.current) return;
@@ -317,6 +351,102 @@ export default function MapPanel() {
     });
   }, [layers.services, setActiveFacility]);
 
+  /* ─── Load static pipeline layers once (hospitals, LTC, AQHI) ─── */
+  useEffect(() => {
+    let cancelled = false;
+    const toPoints = (gj: any, meta: (p: any) => string): MapPoint[] =>
+      (gj?.features ?? [])
+        .filter((f: any) => f?.geometry?.coordinates?.length === 2)
+        .map((f: any) => ({
+          name: f.properties?.name ?? '',
+          lng: f.geometry.coordinates[0],
+          lat: f.geometry.coordinates[1],
+          meta: meta(f.properties ?? {}),
+        }));
+    (async () => {
+      try {
+        const [h, l, full] = await Promise.all([
+          fetch('/data/hospitals.geojson').then(r => r.json()),
+          fetch('/data/ltc_homes.geojson').then(r => r.json()),
+          fetch('/data/brampton_full.geojson').then(r => r.json()),
+        ]);
+        if (cancelled) return;
+        setHospitals(toPoints(h, p => p.emergency_24_7 ? '24/7 emergency' : (p.type ?? 'Hospital')));
+        setLtcHomes(toPoints(l, p => p.beds ? `${p.beds} beds` : 'Long-term care'));
+        const m = new Map<string, AqhiCell>();
+        (full?.features ?? []).forEach((f: any) => {
+          const p = f.properties ?? {};
+          if (p.aqhi != null) m.set(ctKey(p.CTUID), { aqhi: p.aqhi, band: p.aqhi_band ?? '—', pm25: p.pm25 ?? null });
+        });
+        setAqhiByCt(m);
+      } catch {
+        /* static layers are best-effort; map still works without them */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  /* ─── Hospitals (ER anchors) ─── */
+  useEffect(() => {
+    if (!hospitalsLayerRef.current) return;
+    hospitalsLayerRef.current.clearLayers();
+    if (!layers.hospitals) return;
+    hospitals.forEach(p => {
+      L.marker([p.lat, p.lng], { icon: HOSPITAL_ICON })
+        .bindTooltip(`<span style="color:#0F172A;font-weight:500">${p.name}</span><br/><span style="color:#B91C1C;font-size:11px">${p.meta}</span>`, { opacity: 1 })
+        .on('click', () => setActiveFacility({ id: `hospital-${p.name}`, name: p.name, kind: 'clinic', lat: p.lat, lng: p.lng }))
+        .addTo(hospitalsLayerRef.current!);
+    });
+  }, [layers.hospitals, hospitals, setActiveFacility]);
+
+  /* ─── Long-term care homes ─── */
+  useEffect(() => {
+    if (!ltcLayerRef.current) return;
+    ltcLayerRef.current.clearLayers();
+    if (!layers.ltc) return;
+    ltcHomes.forEach(p => {
+      L.marker([p.lat, p.lng], { icon: LTC_ICON })
+        .bindTooltip(`<span style="color:#0F172A;font-weight:500">${p.name}</span><br/><span style="color:#7C3AED;font-size:11px">${p.meta}</span>`, { opacity: 1 })
+        .on('click', () => setActiveFacility({ id: `ltc-${p.name}`, name: p.name, kind: 'community-centre', lat: p.lat, lng: p.lng }))
+        .addTo(ltcLayerRef.current!);
+    });
+  }, [layers.ltc, ltcHomes, setActiveFacility]);
+
+  /* ─── AQHI choropleth tint (toggleable overlay above the risk ramp) ─── */
+  useEffect(() => {
+    if (!aqhiLayerRef.current) return;
+    aqhiLayerRef.current.clearLayers();
+    if (!layers.aqhi || tracts.length === 0) return;
+
+    const geojson = {
+      type: 'FeatureCollection' as const,
+      features: tracts.map(t => ({
+        type: 'Feature' as const,
+        geometry: t.geometry as unknown as GeoJSON.Geometry,
+        properties: { ctuid: t.ctuid },
+      })),
+    };
+
+    const layer = L.geoJSON(geojson, {
+      style: (feat) => {
+        const a = aqhiByCt.get(ctKey(feat?.properties?.ctuid));
+        const color = aqhiColor(a?.band);
+        return { fillColor: color, fillOpacity: a ? 0.5 : 0, color, weight: 0.5 };
+      },
+      onEachFeature: (feat, lyr) => {
+        const a = aqhiByCt.get(ctKey(feat.properties?.ctuid));
+        if (!a) return;
+        lyr.bindTooltip(
+          `<span style="color:#0F172A;font-weight:500">AQHI ${a.aqhi} · ${a.band}</span>` +
+          (a.pm25 != null ? `<br/><span style="color:#71717A;font-size:11px">PM2.5 ${a.pm25} µg/m³</span>` : ''),
+          { sticky: true, opacity: 1 }
+        );
+      },
+    });
+    layer.addTo(aqhiLayerRef.current);
+    layer.bringToFront();
+  }, [layers.aqhi, tracts, aqhiByCt]);
+
   const activeLayerCount = Object.values(layers).filter(Boolean).length;
   const allPrimaryOn = layers.shelters && layers.outages && layers.advisories;
 
@@ -336,18 +466,6 @@ export default function MapPanel() {
         </div>
       </div>
 
-      {/* Vulnerability legend — bottom-left */}
-      <div className="absolute bottom-8 left-4 z-[1000] flex flex-col gap-1 pointer-events-none">
-        <div className="text-[10px] uppercase tracking-[0.14em] text-ink-3">Vulnerability</div>
-        <div className="flex h-[5px]">
-          {['#52A873','#8DB84A','#C8A83C','#C07840','#BF4040','#8C2020'].map(c => (
-            <span key={c} className="w-6" style={{ background: c }} />
-          ))}
-        </div>
-        <div className="flex w-36 justify-between text-[10px] tabular text-ink-4">
-          <span>Baseline</span><span>Critical</span>
-        </div>
-      </div>
     </div>
   );
 }

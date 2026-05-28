@@ -105,6 +105,69 @@ export async function fetchFinance(signal?: AbortSignal): Promise<FinanceSnapsho
   return fetchEnvelope<FinanceSnapshot>('/api/finance', signal);
 }
 
+export interface BriefingSolution {
+  headline: string;
+  actor: 'City' | 'Alectra' | 'Community' | 'Both';
+  detail: string;
+  leverage: 'High' | 'Medium' | 'Low';
+}
+
+export interface BriefingResult {
+  ctuid: string;
+  scenario: string;
+  active_layers: string[];
+  outlook: string;
+  drivers: string;
+  recommended_action: string;
+  confidence: string;
+  watch: string;
+  solutions: BriefingSolution[];
+  used_llm: boolean;
+  generated_at: number;
+}
+
+const SCENARIO_API: Record<string, string> = {
+  'Baseline':   'baseline',
+  'Heatwave':   'heatwave',
+  'Ice Storm':  'icestorm',
+};
+
+export async function fetchBriefing(
+  ctuid: string,
+  scenario: string,
+  activeLayers: string[],
+  signal?: AbortSignal,
+): Promise<BriefingResult> {
+  const apiScenario = SCENARIO_API[scenario] ?? 'baseline';
+  const r = await fetch('/api/briefing', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ctuid, scenario: apiScenario, active_layers: activeLayers }),
+    signal,
+  });
+  if (!r.ok) throw new Error(`/api/briefing → ${r.status}`);
+  const env = (await r.json()) as Envelope<{
+    briefing: string;
+    used_llm: boolean;
+    solutions?: BriefingSolution[];
+  }>;
+  const { briefing, used_llm, solutions } = env.data;
+  const parts = briefing.split('\n\n').map(s => s.trim()).filter(Boolean);
+  return {
+    ctuid,
+    scenario,
+    active_layers:      activeLayers,
+    outlook:            parts[0] ?? briefing,
+    drivers:            parts[1] ?? '',
+    recommended_action: parts[2] ?? '',
+    confidence:         parts[3] ?? '',
+    watch:              parts[4] ?? '',
+    solutions:          solutions ?? [],
+    used_llm,
+    generated_at:       Date.now(),
+  };
+}
+
 /* ─── Merge helpers ───────────────────────────────────────── */
 
 /** Apply a list of weather deltas to existing tracts (immutable). */

@@ -1,0 +1,7 @@
+name,address,city,postal_code,system,type,emergency_24_7,source,fetched_at,latitude,longitude
+Brampton Civic Hospital,2100 Bovaird Drive East,Brampton,L6R 3J7,William Osler Health System,Hospital,True,williamoslerhs.ca,2026-05-26,43.744675,-79.744093
+Peel Memorial Centre for Integrated Health and Wellness,20 Lynch Street,Brampton,L6W 2Z8,William Osler Health System,Urgent Care,False,williamoslerhs.ca,2026-05-26,43.690881,-79.751242
+Etobicoke General Hospital,101 Humber College Boulevard,Etobicoke,M9V 1R8,William Osler Health System,Hospital,True,williamoslerhs.ca,2026-05-26,43.729076,-79.597886
+Mississauga Hospital,100 Queensway West,Mississauga,L5B 1B8,Trillium Health Partners,Hospital,True,trilliumhealthpartners.ca,2026-05-26,43.571926,-79.608084
+Credit Valley Hospital,2200 Eglinton Avenue West,Mississauga,L5M 2N1,Trillium Health Partners,Hospital,True,trilliumhealthpartners.ca,2026-05-26,43.559441,-79.703712
+Headwaters Health Care Centre,100 Rolling Hills Drive,Orangeville,L9W 4X9,Headwaters Health Care Centre,Hospital,True,headwatershealth.ca,2026-05-26,43.919913,-80.074039

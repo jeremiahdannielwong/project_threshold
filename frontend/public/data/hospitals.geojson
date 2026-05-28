@@ -1,0 +1,125 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -79.744093,
+          43.744675
+        ]
+      },
+      "properties": {
+        "name": "Brampton Civic Hospital",
+        "address": "2100 Bovaird Drive East",
+        "city": "Brampton",
+        "postal_code": "L6R 3J7",
+        "system": "William Osler Health System",
+        "type": "Hospital",
+        "emergency_24_7": true,
+        "source": "williamoslerhs.ca"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -79.751242,
+          43.690881
+        ]
+      },
+      "properties": {
+        "name": "Peel Memorial Centre for Integrated Health and Wellness",
+        "address": "20 Lynch Street",
+        "city": "Brampton",
+        "postal_code": "L6W 2Z8",
+        "system": "William Osler Health System",
+        "type": "Urgent Care",
+        "emergency_24_7": false,
+        "source": "williamoslerhs.ca"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -79.597886,
+          43.729076
+        ]
+      },
+      "properties": {
+        "name": "Etobicoke General Hospital",
+        "address": "101 Humber College Boulevard",
+        "city": "Etobicoke",
+        "postal_code": "M9V 1R8",
+        "system": "William Osler Health System",
+        "type": "Hospital",
+        "emergency_24_7": true,
+        "source": "williamoslerhs.ca"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -79.608084,
+          43.571926
+        ]
+      },
+      "properties": {
+        "name": "Mississauga Hospital",
+        "address": "100 Queensway West",
+        "city": "Mississauga",
+        "postal_code": "L5B 1B8",
+        "system": "Trillium Health Partners",
+        "type": "Hospital",
+        "emergency_24_7": true,
+        "source": "trilliumhealthpartners.ca"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -79.703712,
+          43.559441
+        ]
+      },
+      "properties": {
+        "name": "Credit Valley Hospital",
+        "address": "2200 Eglinton Avenue West",
+        "city": "Mississauga",
+        "postal_code": "L5M 2N1",
+        "system": "Trillium Health Partners",
+        "type": "Hospital",
+        "emergency_24_7": true,
+        "source": "trilliumhealthpartners.ca"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.074039,
+          43.919913
+        ]
+      },
+      "properties": {
+        "name": "Headwaters Health Care Centre",
+        "address": "100 Rolling Hills Drive",
+        "city": "Orangeville",
+        "postal_code": "L9W 4X9",
+        "system": "Headwaters Health Care Centre",
+        "type": "Hospital",
+        "emergency_24_7": true,
+        "source": "headwatershealth.ca"
+      }
+    }
+  ]
+}

@@ -5,13 +5,14 @@ import { percentileMap, stressIndex } from './utils';
 import {
   CADENCE,
   STALE_MULTIPLIER,
-  fetchFinance,
   fetchLiveWeather,
   fetchSimulatedWeather,
   fetchOutages,
   mergeOutages,
   mergeWeather,
+  fetchBriefing,
   type FinanceSnapshot,
+  type BriefingResult,
 } from './liveData';
 import { SCENARIO_PROFILE, simulateQuery } from './scenarios';
 import { detectCityPatterns, type CityPattern } from './cityAnalysis';
@@ -28,7 +29,7 @@ import type { Locale } from './i18n';
 import { TENANTS, DEFAULT_TENANT_ID, applyTenantTheme, type TenantConfig } from './tenant';
 
 export type Theme = 'light';
-export type LayerKey = 'shelters' | 'outages' | 'advisories' | 'hydro' | 'transit' | 'services';
+export type LayerKey = 'shelters' | 'outages' | 'advisories' | 'services' | 'hospitals' | 'ltc' | 'aqhi';
 export type FeedKey = 'communities' | 'weather' | 'outages' | 'finance';
 export type Lens = 'operator' | 'municipal' | 'community' | 'resident';
 
@@ -144,6 +145,11 @@ interface AppState {
   suggestedScenario: Scenario | null;
   dismissSuggestion: () => void;
 
+  /* ─── AI briefing for selected tract ─── */
+  briefing: BriefingResult | null;
+  briefingLoading: boolean;
+  briefingError: string | null;
+
   equity: EquitySnapshot;
   restoration: RestorationCandidate[];
   restorationState: RestorationState;
@@ -195,9 +201,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     shelters: true,
     outages: true,
     advisories: true,
-    hydro: false,
-    transit: false,
     services: false,
+    hospitals: false,
+    ltc: false,
+    aqhi: false,
   });
   const [finance, setFinance] = useState<FinanceSnapshot | null>(null);
   const [feeds, setFeeds] = useState<Record<FeedKey, FeedStatus>>({
@@ -277,6 +284,47 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
   };
+
+  /* ─── AI briefing state ─── */
+  const [briefing, setBriefing] = useState<BriefingResult | null>(null);
+  const [briefingLoading, setBriefingLoading] = useState(false);
+  const [briefingError, setBriefingError] = useState<string | null>(null);
+
+  // Stable signature of the active layers so the effect only re-fires when
+  // the set of visible layers actually changes (not on unrelated re-renders).
+  const activeLayersSig = useMemo(
+    () => Object.entries(layers).filter(([, v]) => v).map(([k]) => k).sort().join(','),
+    [layers],
+  );
+
+  useEffect(() => {
+    // Don't blank the briefing when the user deselects or switches tracts —
+    // keep the last good briefing visible until the new fetch lands. The UI
+    // checks briefing.ctuid against selected to know if it's stale.
+    if (!selected) return;
+    let cancelled = false;
+    const ctrl = new AbortController();
+    const activeLayers = activeLayersSig.split(',').filter(Boolean);
+
+    const run = () => {
+      setBriefingLoading(true);
+      setBriefingError(null);
+      fetchBriefing(selected.ctuid, scenario, activeLayers, ctrl.signal)
+        .then(result => { if (!cancelled) { setBriefing(result); setBriefingLoading(false); } })
+        .catch(e => {
+          if (!cancelled && e?.name !== 'AbortError') {
+            // On error keep the previous briefing visible — only surface the error string.
+            setBriefingError(e?.message ?? 'briefing failed');
+            setBriefingLoading(false);
+          }
+        });
+    };
+
+    run();
+    // Hourly auto-refresh keeps the prediction current with live feeds.
+    const id = setInterval(run, 60 * 60_000);
+    return () => { cancelled = true; ctrl.abort(); clearInterval(id); };
+  }, [selected?.ctuid, scenario, activeLayersSig]);
 
   // Smart scenario suggestion: when the live weather crosses an obvious
   // threshold but the operator is still in Baseline, surface a single quiet
@@ -465,29 +513,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; ctrl.abort(); clearInterval(id); };
   }, [loading, error]);
 
-  // Finance — 60 minutes
-  useEffect(() => {
-    if (loading || error) return;
-    let cancelled = false;
-    const ctrl = new AbortController();
-
-    const run = async () => {
-      updateFeed('finance', { inFlight: true, lastAttempt: new Date() });
-      try {
-        const snap = await fetchFinance(ctrl.signal);
-        if (cancelled) return;
-        setFinance(snap);
-        updateFeed('finance', { inFlight: false, lastSuccess: new Date(), error: null });
-      } catch (e: any) {
-        if (cancelled || e?.name === 'AbortError') return;
-        updateFeed('finance', { inFlight: false, error: e?.message ?? 'finance fetch failed' });
-      }
-    };
-
-    run();
-    const id = setInterval(run, CADENCE.finance);
-    return () => { cancelled = true; ctrl.abort(); clearInterval(id); };
-  }, [loading, error]);
 
   /* ─── Derived ─────────────────────────────────────────── */
 
@@ -561,10 +586,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         () => updateFeed('outages', { inFlight: false, lastSuccess: new Date(), error: null }),
         e => updateFeed('outages', { inFlight: false, error: e?.message ?? 'outages failed' }),
       ),
-      fetchFinance().then(s => setFinance(s)).then(
-        () => updateFeed('finance', { inFlight: false, lastSuccess: new Date(), error: null }),
-        e => updateFeed('finance', { inFlight: false, error: e?.message ?? 'finance failed' }),
-      ),
     ]);
   };
 
@@ -588,6 +609,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       forecastPoints,
       tenant, setTenant,
       suggestedScenario, dismissSuggestion,
+      briefing, briefingLoading, briefingError,
       equity, restoration, restorationState, setRestorationStatus,
       annotations, setAnnotation, removeAnnotation,
       audit, logAudit,

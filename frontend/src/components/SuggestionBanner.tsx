@@ -17,12 +17,9 @@ export default function SuggestionBanner() {
   };
 
   return (
-    // Outer div spans the horizontal gap between ForecastWidget (right edge ≈ 276px)
-    // and WeatherStation (left edge ≈ 228px from right). Inner div self-centers within
-    // that space so the banner never bleeds over either widget.
     <div
       className="absolute z-[680] flex items-center justify-center"
-      style={{ top: 14, left: 244, right: 16, pointerEvents: 'none' }}
+      style={{ top: 10, left: 10, right: 10, pointerEvents: 'none' }}
     >
     <div
       className="flex items-center gap-3 bg-surface border border-hairline px-3 py-2"

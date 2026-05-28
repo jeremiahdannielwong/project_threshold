@@ -19,7 +19,7 @@ from pydantic_ai.models.google import GoogleModel as GeminiModel
 from pydantic_ai.providers.google import GoogleProvider
 
 from ..config import Settings
-from ..models.briefing import BriefingResponse
+from ..models.briefing import BriefingResponse, SolutionItem
 from ..models.community import Scenario
 from ..models.extreme_plan import (
     Audience,
@@ -41,26 +41,72 @@ from .scoring import (
     score_for,
 )
 
+
 logger = logging.getLogger(__name__)
 
 
+class _StructuredSolution(BaseModel):
+    headline: str = Field(description="Short title for the solution (6–10 words).")
+    actor: str = Field(
+        description="One of: City, Alectra, Community, Both. No other strings."
+    )
+    detail: str = Field(
+        description=(
+            "One sentence stating the concrete intervention AND its expected "
+            "effect on the probability (e.g. 'shifts likelihood from High to Moderate')."
+        )
+    )
+    leverage: str = Field(
+        description=(
+            "Expected 24h impact on the assessed probability. One of: High, Medium, Low."
+        )
+    )
+
+
 class _StructuredBriefing(BaseModel):
-    snapshot: str = Field(
+    outlook: str = Field(
         description=(
-            "Paragraph 1: Threshold Score, risk tier, population. "
-            "Name the top 2 vulnerability drivers from the data table."
+            "1 sentence. Probabilistic forecast for the next 12–24h. Use a "
+            "qualitative band (Low / Moderate / High / Very High) followed by a "
+            "numeric range in parentheses (e.g. 'High (60–75%)'). State the "
+            "single worst plausible outcome the probability refers to."
         )
     )
-    scenario_risk: str = Field(
+    drivers: str = Field(
         description=(
-            "Paragraph 2: What this specific scenario means for this neighbourhood. "
-            "Be concrete — use exact numbers from the data table only."
+            "1 sentence. The 2–3 numeric drivers from the INPUT TABLE that "
+            "justify the probability. Cite exact values with units."
         )
     )
-    action: str = Field(
+    recommended_action: str = Field(
         description=(
-            "Paragraph 3: One specific, immediately actionable recommendation. "
-            "Name the actor (City / Alectra / community org) and frame the impact using data."
+            "1 sentence. Begin with EXACTLY ONE bracketed actor: [City], "
+            "[Alectra], [Both], or [Hold]. [Hold] = no intervention warranted "
+            "yet — name the tripwire to watch. Operational actions must include "
+            "a quantity + deadline. Recommend the SINGLE highest-leverage move."
+        )
+    )
+    confidence: str = Field(
+        description=(
+            "1 sentence beginning with 'Confidence: Low / Medium / High — '. "
+            "Justify the level using the data (signal strength, feed currency, "
+            "thinness of inputs). Be honest — if the data is sparse, say so."
+        )
+    )
+    watch: str = Field(
+        description=(
+            "1 sentence beginning with 'Watch:'. A measurable tripwire that, if "
+            "crossed in the next 24h, would change the recommendation. Cite a "
+            "specific factor + threshold from the data table."
+        )
+    )
+    solutions: list[_StructuredSolution] = Field(
+        description=(
+            "EXACTLY 3 ranked candidate interventions, ordered by leverage "
+            "(highest first). Each must be a distinct lever — do not repeat the "
+            "recommended_action. Bias the solution mix toward the operator's "
+            "active layers (see OPERATOR FOCUS in the prompt). Mix actors when "
+            "appropriate; do not default all three to the same owner."
         )
     )
 
@@ -370,38 +416,57 @@ class BriefingService:
         self,
         rec: CommunityRecord,
         scenario: Scenario,
+        active_layers: list[str] | None = None,
         *,
         store: DataStore | None = None,
         overrides: dict[str, float | int | None] | None = None,
     ) -> BriefingResponse:
         """Generate a briefing.
 
-        ``store`` activates the richer Gemini prompt — PCA loadings give us the
-        dominant factor, facilities give us nearest-facility context. ``overrides``
-        lets the ambient sweep stamp fresh Tier C values (live humidex, temperature)
-        onto the input table without mutating the underlying record.
+        ``active_layers`` are the operator's currently-active map layers; they
+        bias the prose and solution mix (lens-aware). ``store`` activates the
+        richer Gemini prompt — PCA loadings give us the dominant factor,
+        facilities give us nearest-facility context. ``overrides`` lets the
+        ambient sweep stamp fresh Tier C values (live humidex, temperature) onto
+        the input table without mutating the underlying record.
         """
+        # No caching — every request regenerates so the briefing reflects the
+        # operator's current scenario AND active layers.
+        layer_sig = tuple(sorted({l.strip().lower() for l in (active_layers or []) if l}))
+        logger.info(
+            "Briefing regenerating for %s / %s / layers=%s",
+            rec.ctuid, scenario, layer_sig,
+        )
         inp = inputs_for(rec, scenario, store=store, overrides=overrides)
         if self._briefing_agent is None:
-            return self._fallback(inp)
-        structured = await self._call_briefing_agent(inp)
+            return self._fallback(inp, layer_sig)
+        structured = await self._call_briefing_agent(inp, layer_sig)
         if structured is None:
-            return self._fallback(inp)
-        prose = "\n\n".join([structured.snapshot, structured.scenario_risk, structured.action])
+            return self._fallback(inp, layer_sig)
+        prose = "\n\n".join([
+            structured.outlook,
+            structured.drivers,
+            structured.recommended_action,
+            structured.confidence,
+            structured.watch,
+        ])
         return BriefingResponse(
             ctuid=inp.ctuid,
             scenario=inp.scenario,
             risk_level=inp.risk_level,
             score=inp.score,
             briefing=prose,
+            solutions=[_to_solution_item(s) for s in structured.solutions[:3]],
             inputs=inp.as_dict(),
             used_llm=True,
         )
 
-    async def _call_briefing_agent(self, inp: BriefingInputs) -> _StructuredBriefing | None:
+    async def _call_briefing_agent(
+        self, inp: BriefingInputs, active_layers: tuple[str, ...]
+    ) -> _StructuredBriefing | None:
         assert self._briefing_agent is not None
         try:
-            result = await self._briefing_agent.run(_build_prompt(inp))
+            result = await self._briefing_agent.run(_build_prompt(inp, active_layers))
             return result.output
         except Exception as exc:
             logger.warning("Gemini briefing agent failed: %s — falling back.", exc)
@@ -450,19 +515,56 @@ class BriefingService:
         pass  # pydantic-ai manages its own HTTP connections
 
     @staticmethod
-    def _fallback(inp: BriefingInputs) -> BriefingResponse:
+    def _fallback(inp: BriefingInputs, active_layers: tuple[str, ...]) -> BriefingResponse:
         return BriefingResponse(
             ctuid=inp.ctuid,
             scenario=inp.scenario,
             risk_level=inp.risk_level,
             score=inp.score,
             briefing=_deterministic_briefing(inp),
+            solutions=_deterministic_solutions(inp, active_layers),
             inputs=inp.as_dict(),
             used_llm=False,
         )
 
 
-def _build_prompt(inp: BriefingInputs) -> str:
+def _to_solution_item(s: _StructuredSolution) -> SolutionItem:
+    """Coerce a free-form structured solution from Gemini into the typed model.
+
+    Gemini occasionally returns near-misses like 'city' or 'community partner'.
+    Normalise to the SolutionItem literal set, defaulting safely on mismatch.
+    """
+    actor_raw = (s.actor or "").strip().lower()
+    actor = (
+        "City" if actor_raw.startswith("city")
+        else "Alectra" if actor_raw.startswith("alectra")
+        else "Community" if actor_raw.startswith("community")
+        else "Both" if actor_raw in ("both", "joint", "city+alectra")
+        else "Both"
+    )
+    leverage_raw = (s.leverage or "").strip().lower()
+    leverage = (
+        "High" if leverage_raw.startswith("high")
+        else "Low" if leverage_raw.startswith("low")
+        else "Medium"
+    )
+    return SolutionItem(
+        headline=s.headline.strip(),
+        actor=actor,
+        detail=s.detail.strip(),
+        leverage=leverage,
+    )
+
+
+_LAYER_HINTS: dict[str, str] = {
+    "shelters":   "cooling / warming centre access, mobile shelter deployment, transit shuttles",
+    "outages":    "feeder restoration priority, crew pre-staging, life-support customer notifications",
+    "advisories": "policy + bylaw response, rental-unit compliance, public notifications",
+    "services":   "social-services outreach, welfare checks, community-org partnerships",
+}
+
+
+def _build_prompt(inp: BriefingInputs, active_layers: tuple[str, ...]) -> str:
     """Hand the LLM the *exact* numbers it is allowed to reference.
 
     The system instruction is explicit: do not invent numbers, do not round
@@ -510,77 +612,363 @@ def _build_prompt(inp: BriefingInputs) -> str:
         f"{(2400 / inp.median_income * 100):.0f}%"
         if inp.median_income and inp.median_income > 0 else "unknown"
     )
+    scenario_outcomes = {
+        "heatwave": (
+            "heat-illness ER visits, indoor temperature exceedance in pre-1980 "
+            "stock, A/C-driven feeder overload, mortality risk in seniors / "
+            "medical-device households"
+        ),
+        "icestorm": (
+            "extended outage exposure, hypothermia, frozen-pipe damage, "
+            "feeder-restoration time, life-support-customer risk"
+        ),
+        "baseline": (
+            "energy-poverty crossings, retrofit eligibility shortfall, "
+            "compound vulnerability accumulation"
+        ),
+    }[inp.scenario]
+
+    if active_layers:
+        focus_lines = [
+            f"- {layer}: {_LAYER_HINTS[layer]}"
+            for layer in active_layers if layer in _LAYER_HINTS
+        ]
+        operator_focus = (
+            "OPERATOR FOCUS — the operator currently has these map layers active. "
+            "Bias the SOLUTIONS toward levers that relate to these layers; the "
+            "recommended_action can still ignore them if the data demands it.\n"
+            + ("\n".join(focus_lines) if focus_lines else "- (none mapped)")
+        )
+    else:
+        operator_focus = (
+            "OPERATOR FOCUS — no layers active; surface a balanced solution set "
+            "across shelter, outage, advisory, and outreach levers."
+        )
     return (
-        "You are Threshold, a civic emergency-intelligence briefing engine. "
-        "Write a THREE-PARAGRAPH operational briefing for an emergency manager "
-        f"about {inp.neighbourhood} (Census Tract {inp.ctuid}) under the "
-        f"{SCENARIO_LABELS[inp.scenario]} scenario.\n\n"
-        "PARAGRAPH STRUCTURE — map to the three output fields:\n"
-        "• snapshot: State the Threshold Score, risk tier, and population. "
-        "Name the top 2 vulnerability drivers from the data table.\n"
-        "• scenario_risk: Explain what the "
-        f"{SCENARIO_LABELS[inp.scenario]} scenario specifically means for this "
-        "neighbourhood given its exact factor values. Be concrete — use numbers.\n"
-        "• action: Give one specific, immediately actionable recommendation with "
-        "a clear actor (City / Alectra / community org) and a plausible impact "
-        "framing grounded in the data.\n\n"
+        "You are Threshold, a probabilistic emergency-intelligence engine "
+        "briefing the City of Brampton emergency-management lead and senior "
+        "planners. You support strategic decisions, not field dispatch — your "
+        "job is to give a probability, a confidence, and ONE recommended call.\n\n"
+        f"Target neighbourhood: {inp.neighbourhood} (CT {inp.ctuid}).\n"
+        f"Active scenario: {SCENARIO_LABELS[inp.scenario]}.\n"
+        f"Plausible adverse outcomes to weigh: {scenario_outcomes}.\n\n"
+        f"{operator_focus}\n\n"
+        "OUTPUT FIELDS (one sentence each — ruthless brevity, except 'solutions'):\n"
+        "• outlook — Probabilistic forecast for next 12–24h. Format: "
+        "'{Low|Moderate|High|Very High} ({lo–hi}%) likelihood of {outcome} "
+        "{time window}.' Pick the single worst plausible outcome.\n"
+        "• drivers — Cite the 2–3 numeric drivers from the INPUT TABLE that "
+        "produced that probability. Exact values + units.\n"
+        "• recommended_action — Begin with EXACTLY ONE of [City] / [Alectra] / "
+        "[Both] / [Hold]. Choose the smallest sufficient response. [Hold] when "
+        "the probability is Low and no tripwire is near; name the tripwire to "
+        "watch. Operational actions must carry a quantity + deadline.\n"
+        "• confidence — 'Confidence: {Low|Medium|High} — {data-grounded "
+        "justification}.' Lower it when feeds are stale, signals are thin, or "
+        "drivers conflict.\n"
+        "• watch — 'Watch: {factor} {threshold} → escalate to {actor}.' One "
+        "measurable tripwire pulled from the INPUT TABLE factors.\n"
+        "• solutions — EXACTLY 3 distinct interventions, ordered by leverage "
+        "(highest first). Each has {headline, actor, detail, leverage}. The "
+        "detail MUST quantify the probability shift ('shifts likelihood from "
+        "High to Moderate', 'cuts ER-visit probability ~30%'). Mix actors when "
+        "appropriate. Bias the menu toward the OPERATOR FOCUS layers above.\n\n"
         "STRICT RULES:\n"
-        "1. Use ONLY numbers from the INPUT TABLE below. Do not invent, estimate, "
-        "or reference any figure not listed.\n"
-        "2. No disclaimers, caveats, or source citations — the UI handles that.\n"
-        "3. Each paragraph is one output field — three fields total.\n\n"
-        f"Scenario: {SCENARIO_LABELS[inp.scenario]}\n"
-        f"Logic: {SCENARIO_DESCRIPTIONS[inp.scenario]}\n"
-        f"Estimated energy cost as % of median income: {energy_pct} "
-        "(derived from $2,400/yr avg hydro cost — already in the table)\n\n"
+        "1. Use ONLY numbers from the INPUT TABLE. No invented statistics.\n"
+        "2. Probabilities must be banded (Low/Moderate/High/Very High) with a "
+        "numeric range. Never claim a single precise percentage like '73%'.\n"
+        "3. Recommend EXACTLY ONE actor. Do NOT default to listing both — "
+        "[Both] is only correct when each agency has a discrete, "
+        "non-substitutable role at this moment.\n"
+        "4. Prefer [Hold] over invented urgency. Saying 'nothing to do yet' is "
+        "valuable if the data supports it.\n"
+        "5. Reject vague verbs (monitor / review / consider / assess) inside "
+        "the action field — except inside the tripwire's escalation clause.\n"
+        "6. No disclaimers, no source citations, no markdown, no bullet "
+        "characters inside the output fields.\n\n"
+        f"Scenario logic: {SCENARIO_DESCRIPTIONS[inp.scenario]}\n"
+        f"Derived: Energy cost as % of median income for this CT: {energy_pct}\n\n"
         f"INPUT TABLE:\n{table}\n"
     )
 
 
 def _deterministic_briefing(inp: BriefingInputs) -> str:
-    """Prose path used when the LLM is unavailable. Numbers only — no flourish."""
-    parts: list[str] = []
-    score_txt = f"{inp.score:.1f}" if inp.score is not None else "n/a"
-    tier_txt = inp.risk_level or "Unknown"
-    parts.append(
-        f"Census Tract {inp.ctuid} ({inp.neighbourhood}) scores {score_txt} on the "
-        f"{SCENARIO_LABELS[inp.scenario]} scenario — risk tier: {tier_txt}."
-    )
-
-    drivers: list[str] = []
-    if inp.dominant_factor_label and inp.dominant_factor_value is not None:
-        drivers.append(f"{inp.dominant_factor_label} = {inp.dominant_factor_value:.3f} (the largest contributor here)")
-    if inp.cisv_score is not None:
-        drivers.append(f"CISV composite {inp.cisv_score:.3f}")
-    if inp.pct_renters is not None:
-        drivers.append(f"{inp.pct_renters * 100:.0f}% renter households")
-    if inp.pct_pre1980 is not None:
-        drivers.append(f"{inp.pct_pre1980 * 100:.0f}% pre-1980 dwellings")
-    if inp.humidex is not None and inp.scenario == "heatwave":
-        drivers.append(f"humidex {inp.humidex:.1f}°C")
-    if inp.active_outages and inp.scenario == "icestorm":
-        drivers.append(f"{inp.active_outages} active outage polygon(s)")
-    if drivers:
-        parts.append("Primary drivers: " + ", ".join(drivers) + ".")
-
-    if inp.median_income is not None:
-        parts.append(f"Median household income is CAD {inp.median_income:,.0f}.")
-    if inp.population is not None:
-        parts.append(f"Resident population: {inp.population:,}.")
-
-    if inp.nearest_facility_name and inp.nearest_facility_km is not None:
-        parts.append(
-            f"Nearest facility: {inp.nearest_facility_name} ({inp.nearest_facility_km:.1f} km from the CT centroid)."
-        )
+    """Five-paragraph fallback matching the probabilistic LLM schema."""
+    pop = inp.population or 0
+    renters_pct = (inp.pct_renters or 0) * 100
+    pre1980_pct = (inp.pct_pre1980 or 0) * 100
+    score = inp.score or 0
+    tier = inp.risk_level or "Unknown"
 
     if inp.scenario == "heatwave":
-        parts.append("Operational implication: prioritise cooling-centre outreach for high-renter pre-1980 stock.")
+        humidex = inp.humidex or 0
+        if humidex >= 40:
+            band, rng = "Very High", "75–90"
+        elif humidex >= 36:
+            band, rng = "High", "55–75"
+        elif humidex >= 32:
+            band, rng = "Moderate", "30–50"
+        else:
+            band, rng = "Low", "10–25"
+        outlook = (
+            f"{band} ({rng}%) likelihood of heat-illness ER visits originating "
+            f"from {inp.neighbourhood} in the next 12–24h."
+        )
+        drivers = (
+            f"Humidex {humidex:.1f}°C; {renters_pct:.0f}% renter households "
+            f"(limited A/C control); {pre1980_pct:.0f}% pre-1980 dwellings "
+            f"(weak envelopes)."
+        )
+        if band in ("High", "Very High"):
+            action = (
+                f"[City] Open the nearest cooling centre with extended hours to "
+                f"22:00 tonight; dispatch welfare-check team to seniors-registry "
+                f"addresses by 16:00."
+            )
+        elif band == "Moderate":
+            action = (
+                f"[Hold] No deployment yet — confirm cooling-centre staffing "
+                f"and pre-position outreach roster for the {pop:,} affected residents."
+            )
+        else:
+            action = (
+                f"[Hold] No action warranted; baseline outreach posture is sufficient."
+            )
+        confidence = (
+            f"Confidence: Medium — humidex feed is fresh and demographic "
+            f"signal is strong, but ER-incidence baselines for this CT are not "
+            f"in the input table."
+        )
+        watch = (
+            f"Watch: humidex ≥ 42°C OR an Alectra outage opens inside this CT "
+            f"→ escalate to [Both]."
+        )
     elif inp.scenario == "icestorm":
-        parts.append("Operational implication: pre-stage warming capacity ahead of forecast outages.")
-    else:
-        parts.append("Operational implication: structural vulnerability persists year-round; review retrofit eligibility.")
+        outages = inp.active_outages
+        customers = inp.customers_affected
+        if outages >= 1 or customers >= 100:
+            band, rng = "Very High", "70–90"
+        elif renters_pct >= 50 and pre1980_pct >= 40:
+            band, rng = "High", "50–70"
+        elif score >= 60:
+            band, rng = "Moderate", "30–50"
+        else:
+            band, rng = "Low", "10–25"
+        outlook = (
+            f"{band} ({rng}%) likelihood of unsafe indoor temperatures or "
+            f"hypothermia transports in {inp.neighbourhood} within 12h."
+        )
+        drivers = (
+            f"{outages} active outage polygon(s); {customers:,} customers "
+            f"affected; {renters_pct:.0f}% renters with limited backup heat; "
+            f"{pre1980_pct:.0f}% pre-1980 dwellings."
+        )
+        if outages >= 1:
+            action = (
+                f"[Alectra] Sequence restoration of the feeder serving CT "
+                f"{inp.ctuid} (tier {tier}, score {score:.0f}) ahead of "
+                f"lower-vulnerability outages; notify life-support registry "
+                f"customers within 2h."
+            )
+        elif band == "High":
+            action = (
+                f"[City] Open 1 warming centre (60 cots, overnight staffing) "
+                f"in {inp.neighbourhood} by 18:00."
+            )
+        else:
+            action = (
+                f"[Hold] No action warranted yet — readiness is sufficient at "
+                f"current outage count."
+            )
+        confidence = (
+            f"Confidence: Medium — outage feed is current but indoor-temperature "
+            f"and backup-heat data are unobserved."
+        )
+        watch = (
+            f"Watch: customers_affected ≥ 250 OR temperature drops below -10°C "
+            f"→ escalate to [Both]."
+        )
+    else:  # baseline
+        if score >= 75:
+            band, rng = "High", "55–75"
+        elif score >= 50:
+            band, rng = "Moderate", "30–50"
+        else:
+            band, rng = "Low", "10–25"
+        outlook = (
+            f"{band} ({rng}%) likelihood of compound-vulnerability harm during "
+            f"the next acute weather advisory; no acute exposure right now."
+        )
+        drivers = (
+            f"Threshold Score {score:.0f} (tier {tier}); {renters_pct:.0f}% "
+            f"renters; {(inp.pct_low_income or 0) * 100:.0f}% low-income; "
+            f"{pre1980_pct:.0f}% pre-1980 dwellings."
+        )
+        action = (
+            f"[Hold] No acute action — queue CT {inp.ctuid} ({pop:,} residents) "
+            f"for the next deep-retrofit incentive round and the LEAP roster."
+        )
+        confidence = (
+            f"Confidence: High — drivers are structural (census 2021) and stable "
+            f"over the planning horizon."
+        )
+        watch = (
+            f"Watch: humidex ≥ 35°C OR an Alectra outage opens → re-brief under "
+            f"the appropriate acute scenario."
+        )
 
-    return " ".join(parts)
+    return "\n\n".join([outlook, drivers, action, confidence, watch])
+
+
+def _deterministic_solutions(
+    inp: BriefingInputs, active_layers: tuple[str, ...]
+) -> list[SolutionItem]:
+    """Build a layer-aware solution menu when the LLM is unavailable.
+
+    The catalogue is intentionally small and traceable — each entry maps to a
+    real lever the City or Alectra has. The active layers re-order which
+    levers surface first.
+    """
+    catalogue: list[SolutionItem] = []
+
+    pop = inp.population or 0
+    renters_pct = (inp.pct_renters or 0) * 100
+    pre1980_pct = (inp.pct_pre1980 or 0) * 100
+    outages = inp.active_outages
+
+    if inp.scenario == "heatwave":
+        catalogue.extend([
+            SolutionItem(
+                headline="Deploy mobile cooling bus to this CT",
+                actor="City",
+                detail=(
+                    f"Stage one cooling bus by 14:00; covers ~{int(pop * 0.05)} "
+                    f"residents and shifts ER-visit probability one band lower."
+                ),
+                leverage="High",
+            ),
+            SolutionItem(
+                headline="Activate demand-response on serving feeder",
+                actor="Alectra",
+                detail=(
+                    "Call DR-enrolled customers during the 16:00–20:00 peak; "
+                    "cuts feeder-overload probability by ~25–35%."
+                ),
+                leverage="Medium",
+            ),
+            SolutionItem(
+                headline="Door-knock seniors-registry households",
+                actor="Community",
+                detail=(
+                    f"Welfare checks on {renters_pct:.0f}% renter share; "
+                    "reduces missed-distress incidents materially within 6h."
+                ),
+                leverage="Medium",
+            ),
+            SolutionItem(
+                headline="Extend nearest cooling-centre hours",
+                actor="City",
+                detail=(
+                    "Hold centre open to 22:00 tonight; minor logistical cost, "
+                    "modest probability shift for evening exposure."
+                ),
+                leverage="Low",
+            ),
+        ])
+    elif inp.scenario == "icestorm":
+        catalogue.extend([
+            SolutionItem(
+                headline=(
+                    "Prioritise feeder restoration for this CT"
+                    if outages
+                    else "Pre-stage restoration crew on serving feeder"
+                ),
+                actor="Alectra",
+                detail=(
+                    f"Sequence ahead of lower-vulnerability outages "
+                    f"(tier {inp.risk_level}); cuts extended-exposure probability sharply."
+                    if outages
+                    else f"Position 1 crew within 30 min of CT {inp.ctuid}; "
+                    "shaves expected restoration time by ~40%."
+                ),
+                leverage="High",
+            ),
+            SolutionItem(
+                headline="Open warming centre with 60 cots overnight",
+                actor="City",
+                detail=(
+                    f"Stand up by 18:00 in {inp.neighbourhood}; covers worst-case "
+                    f"hypothermia exposure for the {renters_pct:.0f}% renter share."
+                ),
+                leverage="High",
+            ),
+            SolutionItem(
+                headline="Notify life-support registry customers",
+                actor="Alectra",
+                detail=(
+                    "Direct call within 2h to medical-device households on this "
+                    "feeder; removes a critical mortality tail."
+                ),
+                leverage="Medium",
+            ),
+            SolutionItem(
+                headline="Distribute RTA Section 20 guidance",
+                actor="Community",
+                detail=(
+                    f"Targeted outreach to renters re: minimum-heat law; "
+                    f"low cost, addresses {pre1980_pct:.0f}% pre-1980 stock risk."
+                ),
+                leverage="Low",
+            ),
+        ])
+    else:  # baseline
+        catalogue.extend([
+            SolutionItem(
+                headline="Queue for deep-retrofit incentive round",
+                actor="City",
+                detail=(
+                    f"Add CT {inp.ctuid} ({pop:,} residents, {pre1980_pct:.0f}% "
+                    f"pre-1980) to the next intake; long-run probability reducer."
+                ),
+                leverage="High",
+            ),
+            SolutionItem(
+                headline="Add to LEAP outreach roster",
+                actor="Alectra",
+                detail=(
+                    f"Energy-affordability liaison contacts to "
+                    f"low-income households; reduces energy-poverty risk."
+                ),
+                leverage="Medium",
+            ),
+            SolutionItem(
+                headline="Schedule bylaw rental-stock inspection sweep",
+                actor="City",
+                detail=(
+                    f"Pre-emptive habitability check on {renters_pct:.0f}% renter "
+                    "share before the next acute advisory."
+                ),
+                leverage="Medium",
+            ),
+        ])
+
+    layers_set = set(active_layers)
+
+    def _priority(item: SolutionItem) -> int:
+        h = item.headline.lower()
+        score = {"High": 0, "Medium": 1, "Low": 2}[item.leverage]
+        if "shelter" in layers_set and ("cool" in h or "warming" in h or "centre" in h):
+            score -= 3
+        if "outages" in layers_set and ("feeder" in h or "restoration" in h or "demand-response" in h):
+            score -= 3
+        if "advisories" in layers_set and ("rta" in h or "bylaw" in h or "incentive" in h):
+            score -= 3
+        if "services" in layers_set and ("door-knock" in h or "outreach" in h or "registry" in h):
+            score -= 3
+        return score
+
+    catalogue.sort(key=_priority)
+    return catalogue[:3]
 
 
 def _build_extreme_prompt(

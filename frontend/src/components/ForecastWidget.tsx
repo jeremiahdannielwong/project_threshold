@@ -15,9 +15,9 @@ export default function ForecastWidget() {
   if (forecastPoints.length === 0) return null;
 
   const trayOpen = watchlistOpen || activityOpen;
-  // ForecastWidget is now positioned within the map container (left=0 is the map edge).
-  // When a 320px tray overlays the map from the left, shift right to clear it.
-  const leftOffset = trayOpen ? 320 + 12 : 12;
+  // LayerRail sits at left:10, width:36 → right edge at 46px. Add 10px gap → 56px.
+  // When the 320px watchlist/activity tray is open (left:56, width:320) shift further right.
+  const leftOffset = trayOpen ? 56 + 320 + 10 : 56;
 
   const present = forecastPoints[0];
   const peak = forecastPoints.reduce(
@@ -35,9 +35,11 @@ export default function ForecastWidget() {
     <aside
       className="absolute z-[680] bg-surface border border-hairline"
       style={{
-        top: 14,
+        top: 10,
         left: leftOffset,
         width: 220,
+        borderRadius: 8,
+        boxShadow: '0 4px 20px rgba(15,23,42,0.08)',
         transition: 'left 180ms cubic-bezier(0.22, 1, 0.36, 1)',
       }}
       aria-label="24-hour forecast"

@@ -1,23 +1,9 @@
 /**
- * Static map layer data — transit, hydro, social services.
+ * Static map layer data — social services.
  *
- * Coordinates are simplified approximations of real Brampton infrastructure,
- * sufficient for the layer toggles to render something meaningful while a real
- * data pipeline catches up. Production deployment would replace these with:
- *   - Brampton Transit GTFS shapes (transit)
- *   - Alectra ArcGIS feeder topology (hydro)
- *   - Region of Peel community-services registry (services)
- *
- * Each corridor is a simple polyline; each service point is a [lat, lng] pair
- * with a label. The map renders them through Leaflet primitives — no GeoJSON
- * parsing overhead, no external fetch.
+ * Each service point is a [lat, lng] pair with a label. The map renders them
+ * through Leaflet primitives — no GeoJSON parsing overhead, no external fetch.
  */
-
-export interface Polyline {
-  id: string;
-  name: string;
-  path: [number, number][]; // [lat, lng]
-}
 
 export interface ServicePoint {
   id: string;
@@ -26,98 +12,6 @@ export interface ServicePoint {
   lat: number;
   lng: number;
 }
-
-/** Major Brampton transit corridors — approximated from public route maps. */
-export const TRANSIT_CORRIDORS: Polyline[] = [
-  {
-    id: 'queen-zum',
-    name: 'Züm Queen · 501',
-    path: [
-      [43.6892, -79.8420], [43.6912, -79.8210], [43.6925, -79.8000],
-      [43.6940, -79.7820], [43.6955, -79.7640], [43.6970, -79.7460],
-      [43.6985, -79.7280],
-    ],
-  },
-  {
-    id: 'main-zum',
-    name: 'Züm Main · 502',
-    path: [
-      [43.7560, -79.7600], [43.7440, -79.7600], [43.7320, -79.7610],
-      [43.7180, -79.7620], [43.7000, -79.7635], [43.6860, -79.7650],
-    ],
-  },
-  {
-    id: 'steeles-zum',
-    name: 'Züm Steeles · 505',
-    path: [
-      [43.6620, -79.8400], [43.6620, -79.8200], [43.6620, -79.8000],
-      [43.6620, -79.7800], [43.6620, -79.7600], [43.6620, -79.7400],
-      [43.6620, -79.7200],
-    ],
-  },
-  {
-    id: 'bovaird-zum',
-    name: 'Züm Bovaird · 511',
-    path: [
-      [43.7600, -79.8420], [43.7595, -79.8200], [43.7590, -79.8000],
-      [43.7585, -79.7800], [43.7580, -79.7600], [43.7575, -79.7400],
-      [43.7570, -79.7200],
-    ],
-  },
-  {
-    id: 'bramalea',
-    name: 'Bramalea · 15',
-    path: [
-      [43.7860, -79.7220], [43.7700, -79.7230], [43.7540, -79.7240],
-      [43.7380, -79.7250], [43.7200, -79.7260], [43.6900, -79.7265],
-      [43.6620, -79.7270],
-    ],
-  },
-  {
-    id: 'airport',
-    name: 'Airport Road · 11',
-    path: [
-      [43.7860, -79.6900], [43.7600, -79.6920], [43.7340, -79.6940],
-      [43.7080, -79.6960], [43.6820, -79.6980], [43.6620, -79.7000],
-    ],
-  },
-];
-
-/** Simplified Alectra hydro backbone — main north-south + east-west corridors. */
-export const HYDRO_CORRIDORS: Polyline[] = [
-  {
-    id: 'backbone-ns',
-    name: 'Hwy 410 corridor · 230 kV',
-    path: [
-      [43.7900, -79.7780], [43.7600, -79.7780], [43.7300, -79.7780],
-      [43.7000, -79.7780], [43.6700, -79.7780], [43.6500, -79.7780],
-    ],
-  },
-  {
-    id: 'backbone-ew',
-    name: 'Steeles tie · 115 kV',
-    path: [
-      [43.6650, -79.8400], [43.6650, -79.8100], [43.6650, -79.7800],
-      [43.6650, -79.7500], [43.6650, -79.7200], [43.6650, -79.6900],
-    ],
-  },
-  {
-    id: 'feeder-north',
-    name: 'Mayfield feeder · 27.6 kV',
-    path: [
-      [43.7900, -79.8000], [43.7900, -79.7500], [43.7900, -79.7000],
-      [43.7900, -79.6700],
-    ],
-  },
-  {
-    id: 'feeder-central',
-    name: 'Queen / Bovaird tie · 27.6 kV',
-    path: [
-      [43.7560, -79.8420], [43.7560, -79.7600], [43.7000, -79.7600],
-      [43.6900, -79.7620],
-    ],
-  },
-];
 
 /**
  * Social-services anchor points beyond the cooling/warming centre registry.
@@ -138,10 +32,52 @@ export const SERVICE_POINTS: ServicePoint[] = [
   { id: 'clinic-wise-east', name: 'Wise Elephant FHT · East', kind: 'clinic',          lat: 43.7340, lng: -79.7250 },
 ];
 
-/** Visual tokens for each service kind. */
-export const SERVICE_VISUAL: Record<ServicePoint['kind'], { glyph: string; label: string }> = {
-  library:           { glyph: 'L', label: 'Library' },
-  'community-centre':{ glyph: 'C', label: 'Community centre' },
-  'food-bank':       { glyph: 'F', label: 'Food bank' },
-  clinic:            { glyph: '+', label: 'Clinic' },
+/**
+ * Visual tokens for each service kind.
+ *
+ * `svg` is the inner markup of a 24×24 Lucide-format viewBox — stroke uses
+ * `currentColor` so the icon picks up the accent on render. Each kind has a
+ * distinct icon AND a distinct accent colour so they remain legible at scale.
+ */
+export const SERVICE_VISUAL: Record<
+  ServicePoint['kind'],
+  { svg: string; label: string; color: string }
+> = {
+  library: {
+    label: 'Library',
+    color: '#3F3F46',
+    // Lucide · library-big (book spines)
+    svg:
+      '<rect width="8" height="18" x="3" y="3" rx="1"/>' +
+      '<path d="M7 3v18"/>' +
+      '<path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1 5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z"/>',
+  },
+  'community-centre': {
+    label: 'Community centre',
+    color: '#0F172A',
+    // Lucide · landmark (civic building with columns)
+    svg:
+      '<line x1="3" x2="21" y1="22" y2="22"/>' +
+      '<line x1="6" x2="6" y1="18" y2="11"/>' +
+      '<line x1="10" x2="10" y1="18" y2="11"/>' +
+      '<line x1="14" x2="14" y1="18" y2="11"/>' +
+      '<line x1="18" x2="18" y1="18" y2="11"/>' +
+      '<polygon points="12 2 20 7 4 7"/>',
+  },
+  'food-bank': {
+    label: 'Food bank',
+    color: '#854D0E',
+    // Lucide · shopping-bag (grocery handle bag)
+    svg:
+      '<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/>' +
+      '<path d="M3 6h18"/>' +
+      '<path d="M16 10a4 4 0 0 1-8 0"/>',
+  },
+  clinic: {
+    label: 'Clinic',
+    color: '#9A3412',
+    // Lucide · cross (medical, balanced cross)
+    svg:
+      '<path d="M11 2a2 2 0 0 0-2 2v5H4a2 2 0 0 0-2 2v2c0 1.1.9 2 2 2h5v5c0 1.1.9 2 2 2h2a2 2 0 0 0 2-2v-5h5a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2h-5V4a2 2 0 0 0-2-2h-2z"/>',
+  },
 };

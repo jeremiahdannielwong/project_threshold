@@ -111,19 +111,16 @@ html, body {
 }
 
 .layer-rail {
-  position: absolute;
-  left: 10px;
-  top: 10px;
-  bottom: 10px;
+  flex-shrink: 0;
   width: 36px;
-  background: var(--surface);
+  margin: 10px 0 10px 10px;
+  background: #ffffff;
   border: 0.5px solid var(--hairline);
   border-radius: 8px;
   display: flex;
   flex-direction: column;
   padding: var(--space-2) 0;
   gap: var(--space-1);
-  z-index: 600;
   box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08);
   overflow: hidden;
 }
@@ -143,25 +140,28 @@ html, body {
 }
 
 .dispatch-card {
-  position: absolute;
-  left: 56px;
-  top: 10px;
-  bottom: 10px;
+  flex-shrink: 0;
   width: 380px;
-  background: var(--surface);
+  margin: 10px 0 10px 10px;
+  background: #ffffff;
   border: 0.5px solid var(--hairline);
   border-radius: 8px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  z-index: 560;
   box-shadow: 0 4px 20px rgba(15, 23, 42, 0.10);
-  animation: sidebar-enter var(--dur-deliberate) var(--ease);
+  transition: width 240ms cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 200ms cubic-bezier(0.4, 0, 0.2, 1),
+              margin 240ms cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 200ms;
 }
 
-@keyframes sidebar-enter {
-  from { opacity: 0; transform: translateX(-12px); }
-  to   { opacity: 1; transform: translateX(0); }
+.dispatch-card.panel-closed {
+  width: 0;
+  opacity: 0;
+  pointer-events: none;
+  margin-left: 0;
+  box-shadow: none;
 }
 
 @keyframes dispatch-rise {
@@ -170,18 +170,26 @@ html, body {
 }
 
 .watchlist-tray {
-  position: absolute;
+  flex-shrink: 0;
   width: 320px;
-  background: var(--surface);
+  margin: 10px 0 10px 10px;
+  background: #ffffff;
+  border: 0.5px solid var(--hairline);
+  border-radius: 8px;
   display: flex;
   flex-direction: column;
-  z-index: 550;
-  animation: tray-slide var(--dur-brisk) var(--ease);
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(15,23,42,0.10);
+  transition: width 240ms cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 200ms cubic-bezier(0.4, 0, 0.2, 1),
+              margin 240ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-@keyframes tray-slide {
-  from { opacity: 0; transform: translateX(-8px); }
-  to   { opacity: 1; transform: translateX(0); }
+.watchlist-tray.panel-closed {
+  width: 0;
+  opacity: 0;
+  pointer-events: none;
+  margin-left: 0;
 }
 
 /* Restraint primitives */
@@ -264,18 +272,44 @@ html, body {
   }
 }
 
+/* ─── Print-only elements (hidden on screen, visible when printing) ─ */
+.print-only { display: none; }
+
 /* ─── Print — incident brief ────────────────────────────────
    Triggered by the print button in the dispatch card. Strips every
-   chrome surface and renders only the dispatch card content full-width.
-   Produces a one-page printable / save-as-PDF that operators can sign,
+   chrome surface and renders the full neighbourhood report.
+   Produces a printable / save-as-PDF document operators can sign,
    email, or file with a regulator.
 */
 @media print {
-  @page { size: Letter; margin: 18mm 18mm 18mm 18mm; }
+  @page { size: Letter; margin: 16mm 18mm 16mm 18mm; }
 
-  html, body { background: white !important; height: auto !important; overflow: visible !important; }
+  /* ── Release every height/overflow lock on ancestor containers ──
+     The app shell uses h-screen + overflow-hidden + absolute inset-0.
+     All of those clip output to a single viewport height. Unwinding
+     them lets the browser paginate across as many pages as needed.   */
+  html, body, #root {
+    background: white !important;
+    height: auto !important;
+    min-height: unset !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
 
-  /* Hide chrome */
+  /* Shell div ([data-theme]) and every wrapper down to the flex row */
+  [data-theme],
+  [data-theme] > *,
+  [data-theme] > * > * {
+    display: block !important;
+    position: static !important;
+    inset: unset !important;
+    height: auto !important;
+    min-height: unset !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  /* Hide every UI chrome element */
   .ribbon, .layer-rail, .status-strip, .watchlist-tray,
   [data-activity-tray],
   .leaflet-container, .leaflet-popup,
@@ -283,33 +317,46 @@ html, body {
     display: none !important;
   }
 
-  /* Promote the dispatch card to a full-page document */
+  /* Hide all panel siblings of the dispatch-card (LeftPanel, map, etc.) */
+  [data-theme] > * > * > *:not(.dispatch-card) {
+    display: none !important;
+  }
+
+  /* Dispatch card becomes the full-page document */
   .dispatch-card {
+    display: block !important;
     position: static !important;
     width: 100% !important;
     max-width: none !important;
     max-height: none !important;
+    height: auto !important;
     border: none !important;
     box-shadow: none !important;
     animation: none !important;
     overflow: visible !important;
   }
-  .dispatch-card > * { overflow: visible !important; }
-  .dispatch-card .overflow-y-auto { overflow: visible !important; max-height: none !important; }
+  .dispatch-card > * {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+  }
 
-  /* Operator note edit chrome should not print */
+  /* Screen-only sidebar body is hidden; the print report takes over */
   .print\:hidden { display: none !important; }
 
-  /* Add a print-only document header */
+  /* Print report becomes visible */
+  .print-only { display: block !important; }
+
+  /* Document header stamp */
   .dispatch-card::before {
     content: "Threshold · Incident Brief · " attr(data-print-stamp);
     display: block;
-    font-size: 10pt;
+    font-size: 9pt;
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: #71717A;
     border-bottom: 0.5pt solid #E8E4D8;
     padding-bottom: 8pt;
-    margin-bottom: 12pt;
+    margin-bottom: 4pt;
   }
 }

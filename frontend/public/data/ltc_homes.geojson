@@ -1,0 +1,221 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -79.773065,
+          43.661436
+        ]
+      },
+      "properties": {
+        "name": "Burton Manor",
+        "address": "5 Sterritt Drive",
+        "city": "Brampton",
+        "postal_code": "L6Y 5P3",
+        "beds": 128,
+        "source": "ontario-mltc-public-reporting"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -79.735838,
+          43.655372
+        ]
+      },
+      "properties": {
+        "name": "Extendicare Brampton",
+        "address": "7891 McLaughlin Road",
+        "city": "Brampton",
+        "postal_code": "L6Y 5H8",
+        "beds": 150,
+        "source": "ontario-mltc-public-reporting"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -79.742729,
+          43.654176
+        ]
+      },
+      "properties": {
+        "name": "Faith Manor Nursing Home",
+        "address": "7900 McLaughlin Road South",
+        "city": "Brampton",
+        "postal_code": "L6Y 5A7",
+        "beds": 160,
+        "source": "ontario-mltc-public-reporting"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -79.741003,
+          43.652529
+        ]
+      },
+      "properties": {
+        "name": "Grace Manor",
+        "address": "45 Kingknoll Drive",
+        "city": "Brampton",
+        "postal_code": "L6Y 5P2",
+        "beds": 120,
+        "source": "ontario-mltc-public-reporting"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -79.689169,
+          43.757466
+        ]
+      },
+      "properties": {
+        "name": "Hawthorn Woods Community",
+        "address": "9257 Goreway Drive",
+        "city": "Brampton",
+        "postal_code": "L6P 0N5",
+        "beds": 160,
+        "source": "ontario-mltc-public-reporting"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -79.754991,
+          43.758232
+        ]
+      },
+      "properties": {
+        "name": "Maple Grove Community",
+        "address": "215 Sunny Meadow Blvd",
+        "city": "Brampton",
+        "postal_code": "L6R 3B5",
+        "beds": 160,
+        "source": "ontario-mltc-public-reporting"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -79.783291,
+          43.702993
+        ]
+      },
+      "properties": {
+        "name": "Peel Manor",
+        "address": "525 Main Street North",
+        "city": "Brampton",
+        "postal_code": "L6X 1N9",
+        "beds": 177,
+        "source": "ontario-mltc-public-reporting"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -79.741988,
+          43.750702
+        ]
+      },
+      "properties": {
+        "name": "Tall Pines Long Term Care Centre",
+        "address": "1001 Peter Robertson Blvd",
+        "city": "Brampton",
+        "postal_code": "L6R 2Y3",
+        "beds": 160,
+        "source": "ontario-mltc-public-reporting"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -79.771903,
+          43.740833
+        ]
+      },
+      "properties": {
+        "name": "The Village of Sandalwood Park",
+        "address": "425 Great Lakes Drive",
+        "city": "Brampton",
+        "postal_code": "L6R 2W8",
+        "beds": 120,
+        "source": "ontario-mltc-public-reporting"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -79.736074,
+          43.684742
+        ]
+      },
+      "properties": {
+        "name": "Tullamore Community",
+        "address": "133 Kennedy Road South",
+        "city": "Brampton",
+        "postal_code": "L6W 3G3",
+        "beds": 159,
+        "source": "ontario-mltc-public-reporting"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -79.742767,
+          43.653541
+        ]
+      },
+      "properties": {
+        "name": "Tyndall Seniors Village - Brampton",
+        "address": "7940 McLaughlin Road South",
+        "city": "Brampton",
+        "postal_code": "L6Y 5A7",
+        "beds": 117,
+        "source": "ontario-mltc-public-reporting"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -79.783528,
+          43.720246
+        ]
+      },
+      "properties": {
+        "name": "Woodhall Park Community",
+        "address": "10260 Kennedy Road North",
+        "city": "Brampton",
+        "postal_code": "L6Z 4N7",
+        "beds": 147,
+        "source": "ontario-mltc-public-reporting"
+      }
+    }
+  ]
+}

@@ -34,6 +34,8 @@ services:
       # Pass through optional API keys if present in host env / .env file.
       OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-15}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     # No pipeline/data bind mount — the backend reads the ontology from Postgres.

@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
 import { AppProvider, useApp } from './context';
-import TopBar from './components/TopBar';
 import LayerRail from './components/LayerRail';
 import StatusStrip from './components/StatusStrip';
 import MapPanel from './components/MapPanel';
@@ -8,7 +7,6 @@ import LeftPanel from './components/LeftPanel';
 import RightPanel from './components/RightPanel';
 import ActivityTray from './components/ActivityTray';
 import ResidentView from './components/ResidentView';
-import IntelligencePanel from './components/IntelligencePanel';
 import CommandPalette from './components/CommandPalette';
 import Methodology from './components/Methodology';
 import SuggestionBanner from './components/SuggestionBanner';
@@ -17,7 +15,6 @@ import WallDisplay from './components/WallDisplay';
 import SituationReport from './components/SituationReport';
 import DecisionReplay from './components/DecisionReplay';
 import CrossJurisdiction from './components/CrossJurisdiction';
-import ForecastWidget from './components/ForecastWidget';
 
 function isEditable(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -139,21 +136,19 @@ function Canvas() {
 
   return (
     <div className="flex-1 relative overflow-hidden">
-      {/* Base layer: map fills everything */}
-      <div className="absolute inset-0 flex flex-col">
-        <MapPanel />
-        <ForecastWidget />
-        <SuggestionBanner />
+      {/* Flex row: icon rail | left panels | map | right intelligence panel */}
+      <div className="absolute inset-0 flex flex-row">
+        <LayerRail />
+        <LeftPanel />
+        <ActivityTray />
+        <RightPanel />
+        <div className="flex-1 flex flex-col relative overflow-hidden">
+          <MapPanel />
+          <SuggestionBanner />
+        </div>
       </div>
 
-      {/* Floating panels — all absolutely positioned over the map */}
-      <LayerRail />
-      <LeftPanel />
-      <RightPanel />
-      <IntelligencePanel />
-      <ActivityTray />
-
-      {/* Full-screen overlay modals */}
+      {/* Full-screen overlay modals — fixed-positioned, always on top */}
       <CommandPalette />
       <Methodology />
       <FacilityCard />
@@ -191,7 +186,6 @@ function Shell() {
   }
   return (
     <div data-theme="light" className="flex flex-col h-screen bg-canvas text-ink">
-      <TopBar />
       <Canvas />
       <StatusStrip />
     </div>

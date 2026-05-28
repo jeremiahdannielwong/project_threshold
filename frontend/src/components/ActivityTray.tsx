@@ -35,14 +35,17 @@ export default function ActivityTray() {
     return () => clearInterval(id);
   }, [activityOpen]);
 
-  if (!activityOpen) return null;
-
   return (
     <aside
       data-activity-tray
-      className="absolute top-0 bottom-0 z-[700] bg-surface border-r border-hairline flex flex-col"
-      style={{ left: 0, width: 320 }}
+      className={`watchlist-tray${activityOpen ? '' : ' panel-closed'}`}
     >
+      {/* ── Wordmark ────────────────────────────────────────── */}
+      <div className="px-4 pt-3 pb-2.5 border-b border-hairline flex-shrink-0 flex items-baseline gap-2">
+        <span className="text-[14px] font-medium tracking-tight" style={{ color: 'var(--ink)' }}>Threshold</span>
+        <span className="text-[10px] uppercase tracking-[0.13em]" style={{ color: 'var(--ink-3)' }}>Brampton · Operational</span>
+      </div>
+
       <div className="px-4 pt-3 pb-2 border-b border-hairline">
         <div className="flex items-baseline justify-between">
           <h2 className="text-[11px] uppercase tracking-[0.14em] text-ink-3 font-medium">Operational ledger</h2>

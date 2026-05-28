@@ -1,0 +1,13 @@
+name,address,city,postal_code,beds,source,fetched_at,latitude,longitude
+Burton Manor,5 Sterritt Drive,Brampton,L6Y 5P3,128,ontario-mltc-public-reporting,2026-05-26,43.661436,-79.773065
+Extendicare Brampton,7891 McLaughlin Road,Brampton,L6Y 5H8,150,ontario-mltc-public-reporting,2026-05-26,43.655372,-79.735838
+Faith Manor Nursing Home,7900 McLaughlin Road South,Brampton,L6Y 5A7,160,ontario-mltc-public-reporting,2026-05-26,43.654176,-79.742729
+Grace Manor,45 Kingknoll Drive,Brampton,L6Y 5P2,120,ontario-mltc-public-reporting,2026-05-26,43.652529,-79.741003
+Hawthorn Woods Community,9257 Goreway Drive,Brampton,L6P 0N5,160,ontario-mltc-public-reporting,2026-05-26,43.757466,-79.689169
+Maple Grove Community,215 Sunny Meadow Blvd,Brampton,L6R 3B5,160,ontario-mltc-public-reporting,2026-05-26,43.758232,-79.754991
+Peel Manor,525 Main Street North,Brampton,L6X 1N9,177,ontario-mltc-public-reporting,2026-05-26,43.702993,-79.783291
+Tall Pines Long Term Care Centre,1001 Peter Robertson Blvd,Brampton,L6R 2Y3,160,ontario-mltc-public-reporting,2026-05-26,43.750702,-79.741988
+The Village of Sandalwood Park,425 Great Lakes Drive,Brampton,L6R 2W8,120,ontario-mltc-public-reporting,2026-05-26,43.740833,-79.771903
+Tullamore Community,133 Kennedy Road South,Brampton,L6W 3G3,159,ontario-mltc-public-reporting,2026-05-26,43.684742,-79.736074
+Tyndall Seniors Village - Brampton,7940 McLaughlin Road South,Brampton,L6Y 5A7,117,ontario-mltc-public-reporting,2026-05-26,43.653541,-79.742767
+Woodhall Park Community,10260 Kennedy Road North,Brampton,L6Z 4N7,147,ontario-mltc-public-reporting,2026-05-26,43.720246,-79.783528
