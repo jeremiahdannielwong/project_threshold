@@ -225,8 +225,8 @@ export default function MapPanel() {
           const rollup = rollupByTract.get(t.ctuid);
           (lyr as L.Path).setStyle({ fillOpacity: 0.85, weight: 1, color: '#0F172A' });
           const lines = [
-            `<span style="color:#0F172A;font-weight:500">${t.neighbourhood}</span>`,
-            `<span style="color:#71717A;font-size:11px">${score.toFixed(0)} · ${rampLabel(p)}</span>`,
+            `<span style="color:#0F172A;font-weight:500;display:block;line-height:1.3">${t.neighbourhood}</span>`,
+            `<span style="color:#71717A;font-size:11px;display:block;margin-top:2px">${score.toFixed(0)} · ${rampLabel(p)}</span>`,
           ];
           if (rollup && rollup.total > 0) {
             const urg = rollup.maxUrgency ?? 'routine';
@@ -241,11 +241,12 @@ export default function MapPanel() {
             );
             if (rollup.topHeadline) {
               lines.push(
-                `<span style="color:#3F3F46;font-size:11px;display:block;max-width:240px;line-height:1.4">${rollup.topHeadline}</span>`
+                `<span style="color:#3F3F46;font-size:11px;display:block;line-height:1.4">${rollup.topHeadline}</span>`
               );
             }
           }
-          lyr.bindTooltip(lines.join(''), { sticky: true, opacity: 1 }).openTooltip();
+          const html = `<div style="width:220px">${lines.join('')}</div>`;
+          lyr.bindTooltip(html, { sticky: true, opacity: 1 }).openTooltip();
         });
         lyr.on('mouseout', () => layer.resetStyle(lyr as L.Path));
         lyr.on('click', () => setSelected(selected?.ctuid === t.ctuid ? null : t));

@@ -52,6 +52,60 @@ function centroid(geometry: CommunityFeature['geometry']): [number, number] {
   return [lat, lng];
 }
 
+/**
+ * Append a cardinal-direction suffix to every CT that shares a SPA name with
+ * another CT. Brampton's Secondary Plan Areas are far coarser than census
+ * tracts — 21 CTs collapse into a single "Flowertown" name — so the panel
+ * and brief showed multiple identical labels. We disambiguate by computing
+ * each duplicate CT's bearing from the SPA's centroid and slotting it into
+ * one of 8 compass octants (N/NE/E/SE/S/SW/W/NW). If two CTs land in the
+ * same octant we append an ordinal so every label remains unique.
+ */
+function disambiguateNeighbourhoods(tracts: Tract[]): void {
+  const groups = new Map<string, Tract[]>();
+  for (const t of tracts) {
+    const list = groups.get(t.neighbourhood);
+    if (list) list.push(t);
+    else groups.set(t.neighbourhood, [t]);
+  }
+
+  const DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+
+  for (const [name, group] of groups) {
+    if (group.length <= 1) continue;
+
+    const centLat = group.reduce((s, t) => s + t.lat, 0) / group.length;
+    const centLng = group.reduce((s, t) => s + t.lng, 0) / group.length;
+
+    const labelled = group.map(t => {
+      const dLat = t.lat - centLat;
+      const dLng = t.lng - centLng;
+      let bearing = Math.atan2(dLng, dLat) * 180 / Math.PI;
+      if (bearing < 0) bearing += 360;
+      const idx = Math.floor(((bearing + 22.5) % 360) / 45);
+      return { tract: t, direction: DIRS[idx] };
+    });
+
+    const byDir = new Map<string, typeof labelled>();
+    for (const item of labelled) {
+      const arr = byDir.get(item.direction);
+      if (arr) arr.push(item);
+      else byDir.set(item.direction, [item]);
+    }
+
+    for (const [dir, items] of byDir) {
+      if (items.length === 1) {
+        items[0].tract.neighbourhood = `${name} (${dir})`;
+      } else {
+        items.sort((a, b) => b.tract.lat - a.tract.lat || a.tract.lng - b.tract.lng);
+        items.forEach((item, i) => {
+          item.tract.neighbourhood = `${name} (${dir}-${i + 1})`;
+        });
+      }
+    }
+  }
+}
+
 function num(v: number | null | undefined, fallback = 0): number {
   return v == null || Number.isNaN(v) ? fallback : v;
 }
@@ -135,6 +189,8 @@ export async function loadData(): Promise<{ tracts: Tract[]; facilities: Facilit
       shelterList: nearby.map(fac => fac.name),
     };
   });
+
+  disambiguateNeighbourhoods(tracts);
 
   return { tracts, facilities };
 }
