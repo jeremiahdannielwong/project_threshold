@@ -1,4 +1,4 @@
-# Project Threshold by Ta Tan Dat, Jeremiah Danniel Wong, Kai Ngo & Arlene Pham
+# Project Threshold
 
 > 🏆 **1st Place Winner — Seneca Energy Hackathon 2026**
 >
@@ -11,6 +11,8 @@ Project Threshold is an AI-powered community resilience platform designed to hel
 Using geospatial intelligence, artificial intelligence, and publicly available environmental datasets, Threshold transforms complex data into personalized, actionable insights that enable users to make informed decisions before, during, and after emergencies.
 
 Rather than reacting to disasters, Threshold focuses on proactive resilience—helping communities understand their vulnerabilities, access relevant resources, and build long-term preparedness.
+
+Made by Ta Tan Dat, Jeremiah Danniel Wong, Kai Ngo & Arlene Pham.
 
 ## The Problem
 
